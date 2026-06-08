@@ -1,0 +1,9 @@
+{
+  "name": "Axon Shell",
+  "description": "Axon OS GNOME Shell extension — Spaces, Intent Bar, AI integration",
+  "uuid": "axon-shell@axon-os.github.io",
+  "shell-version": ["45", "46", "47"],
+  "version": 1,
+  "url": "https://github.com/kaorii-ako/Axon-OS",
+  "settings-schema": "org.gnome.shell.extensions.axon-shell"
+}

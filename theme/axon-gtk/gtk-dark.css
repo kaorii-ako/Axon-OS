@@ -1,0 +1,719 @@
+/* ============================================================
+   Axon OS — GTK4 Dark Theme
+   Design tokens
+   ============================================================ */
+
+@define-color bg_color          #0e0e10;
+@define-color bg_secondary      #17171a;
+@define-color bg_tertiary       #1e1e23;
+@define-color accent_color      #a78bfa;
+@define-color accent_bg_color   #a78bfa;
+@define-color accent_fg_color   #0e0e10;
+@define-color text_primary      #e0e0e0;
+@define-color text_secondary    #888888;
+@define-color border_color      #2a2a2e;
+@define-color destructive_color #f87171;
+@define-color success_color     #4ade80;
+@define-color warning_color     #fbbf24;
+
+/* ============================================================
+   Reset / Base
+   ============================================================ */
+
+* {
+  -gtk-icon-shadow: none;
+  box-shadow: none;
+  text-shadow: none;
+}
+
+/* ============================================================
+   Window / Background
+   ============================================================ */
+
+window,
+.background {
+  background-color: @bg_color;
+  color: @text_primary;
+}
+
+/* ============================================================
+   Headerbar / Titlebar
+   ============================================================ */
+
+headerbar,
+.titlebar {
+  background-color: @bg_secondary;
+  color: @text_primary;
+  border-bottom: 1px solid @border_color;
+  box-shadow: none;
+  padding: 4px 8px;
+  min-height: 46px;
+}
+
+headerbar .title,
+.titlebar .title {
+  color: @text_primary;
+  font-weight: 600;
+}
+
+headerbar .subtitle,
+.titlebar .subtitle {
+  color: @text_secondary;
+  font-size: 0.85em;
+}
+
+/* Window controls */
+headerbar windowcontrols button,
+.titlebar windowcontrols button {
+  background-color: @bg_tertiary;
+  border: 1px solid @border_color;
+  border-radius: 6px;
+  min-width: 16px;
+  min-height: 16px;
+  padding: 2px;
+  box-shadow: none;
+}
+
+headerbar windowcontrols button:hover,
+.titlebar windowcontrols button:hover {
+  background-color: #26262d;
+}
+
+/* ============================================================
+   Button
+   ============================================================ */
+
+button {
+  background-color: @bg_tertiary;
+  color: @text_primary;
+  border: 1px solid @border_color;
+  border-radius: 8px;
+  padding: 6px 14px;
+  box-shadow: none;
+  transition: background-color 120ms ease;
+}
+
+button:hover {
+  background-color: #26262d;
+}
+
+button:active {
+  background-color: #2e2e36;
+}
+
+button:disabled {
+  background-color: @bg_tertiary;
+  color: @text_secondary;
+  border-color: @border_color;
+  opacity: 0.5;
+}
+
+button.suggested-action {
+  background-color: @accent_color;
+  color: @bg_color;
+  border-color: @accent_color;
+}
+
+button.suggested-action:hover {
+  background-color: #b99ffb;
+  border-color: #b99ffb;
+}
+
+button.suggested-action:active {
+  background-color: #9370f6;
+  border-color: #9370f6;
+}
+
+button.destructive-action {
+  background-color: @destructive_color;
+  color: @bg_color;
+  border-color: @destructive_color;
+}
+
+button.destructive-action:hover {
+  background-color: #f99393;
+  border-color: #f99393;
+}
+
+button.flat {
+  background-color: transparent;
+  border-color: transparent;
+  box-shadow: none;
+}
+
+button.flat:hover {
+  background-color: @bg_tertiary;
+}
+
+button.circular {
+  border-radius: 9999px;
+  padding: 6px;
+}
+
+/* ============================================================
+   Entry / Text Input
+   ============================================================ */
+
+entry,
+.entry {
+  background-color: @bg_secondary;
+  color: @text_primary;
+  border: 1px solid @border_color;
+  border-radius: 8px;
+  padding: 6px 10px;
+  box-shadow: none;
+  caret-color: @accent_color;
+}
+
+entry:focus,
+.entry:focus {
+  border-color: @accent_color;
+  outline: none;
+}
+
+entry:disabled,
+.entry:disabled {
+  color: @text_secondary;
+  opacity: 0.5;
+}
+
+entry placeholder {
+  color: @text_secondary;
+}
+
+/* SpinButton */
+spinbutton {
+  background-color: @bg_secondary;
+  border: 1px solid @border_color;
+  border-radius: 8px;
+}
+
+spinbutton button {
+  background-color: transparent;
+  border: none;
+  border-radius: 0;
+}
+
+spinbutton button:hover {
+  background-color: @bg_tertiary;
+}
+
+/* SearchEntry */
+searchentry {
+  background-color: @bg_secondary;
+  border: 1px solid @border_color;
+  border-radius: 8px;
+}
+
+searchentry:focus {
+  border-color: @accent_color;
+}
+
+/* ============================================================
+   Card
+   ============================================================ */
+
+.card {
+  background-color: @bg_secondary;
+  border: 1px solid @border_color;
+  border-radius: 12px;
+  padding: 12px;
+  box-shadow: none;
+}
+
+.card:hover {
+  background-color: #19191d;
+}
+
+/* ============================================================
+   Popover / Menu
+   ============================================================ */
+
+popover,
+popover.background {
+  background-color: @bg_secondary;
+  border: 1px solid @border_color;
+  border-radius: 10px;
+  box-shadow: none;
+  padding: 4px;
+}
+
+popover > arrow {
+  background-color: @bg_secondary;
+  border-color: @border_color;
+}
+
+menu {
+  background-color: @bg_secondary;
+  border: 1px solid @border_color;
+  border-radius: 10px;
+  padding: 4px 0;
+  box-shadow: none;
+}
+
+menuitem {
+  padding: 6px 12px;
+  border-radius: 6px;
+  color: @text_primary;
+}
+
+menuitem:hover {
+  background-color: @bg_tertiary;
+  color: @text_primary;
+}
+
+menuitem:disabled {
+  color: @text_secondary;
+}
+
+menuitem accelerator {
+  color: @text_secondary;
+}
+
+separator.horizontal {
+  background-color: @border_color;
+  min-height: 1px;
+  margin: 3px 6px;
+}
+
+/* ============================================================
+   ListBox / Row
+   ============================================================ */
+
+listbox {
+  background-color: transparent;
+}
+
+listbox row {
+  padding: 8px 12px;
+  border-radius: 6px;
+  transition: background-color 80ms ease;
+}
+
+listbox row:hover {
+  background-color: @bg_secondary;
+}
+
+listbox row:selected {
+  background-color: @bg_tertiary;
+  color: @accent_color;
+}
+
+listbox row:selected * {
+  color: @accent_color;
+}
+
+/* ============================================================
+   Scrollbar
+   ============================================================ */
+
+scrollbar {
+  background-color: transparent;
+  border: none;
+}
+
+scrollbar slider {
+  background-color: #3a3a3e;
+  border-radius: 4px;
+  min-width: 6px;
+  min-height: 6px;
+  margin: 2px;
+  transition: background-color 120ms ease;
+}
+
+scrollbar slider:hover {
+  background-color: #50505a;
+}
+
+scrollbar slider:active {
+  background-color: @accent_color;
+}
+
+scrollbar.vertical slider {
+  min-width: 6px;
+}
+
+scrollbar.horizontal slider {
+  min-height: 6px;
+}
+
+/* ============================================================
+   Checkbutton / Check
+   ============================================================ */
+
+checkbutton {
+  color: @text_primary;
+  spacing: 8px;
+}
+
+checkbutton check {
+  background-color: @bg_tertiary;
+  border: 1px solid @border_color;
+  border-radius: 4px;
+  min-width: 16px;
+  min-height: 16px;
+  box-shadow: none;
+  transition: background-color 120ms ease, border-color 120ms ease;
+}
+
+checkbutton check:hover {
+  border-color: @accent_color;
+}
+
+checkbutton:checked check {
+  background-color: @accent_color;
+  border-color: @accent_color;
+  color: @bg_color;
+}
+
+checkbutton:indeterminate check {
+  background-color: @accent_color;
+  border-color: @accent_color;
+}
+
+checkbutton:disabled check {
+  opacity: 0.5;
+}
+
+/* ============================================================
+   Radiobutton / Radio
+   ============================================================ */
+
+radiobutton {
+  color: @text_primary;
+  spacing: 8px;
+}
+
+radiobutton radio {
+  background-color: @bg_tertiary;
+  border: 1px solid @border_color;
+  border-radius: 9999px;
+  min-width: 16px;
+  min-height: 16px;
+  box-shadow: none;
+  transition: background-color 120ms ease, border-color 120ms ease;
+}
+
+radiobutton radio:hover {
+  border-color: @accent_color;
+}
+
+radiobutton:checked radio {
+  background-color: @accent_color;
+  border-color: @accent_color;
+  color: @bg_color;
+}
+
+radiobutton:disabled radio {
+  opacity: 0.5;
+}
+
+/* ============================================================
+   Switch
+   ============================================================ */
+
+switch {
+  background-color: @bg_tertiary;
+  border: 1px solid @border_color;
+  border-radius: 9999px;
+  min-width: 44px;
+  min-height: 24px;
+  box-shadow: none;
+  transition: background-color 150ms ease, border-color 150ms ease;
+}
+
+switch:checked {
+  background-color: @accent_color;
+  border-color: @accent_color;
+}
+
+switch:hover {
+  border-color: @accent_color;
+}
+
+switch slider {
+  background-color: @text_secondary;
+  border-radius: 9999px;
+  min-width: 18px;
+  min-height: 18px;
+  margin: 2px;
+  box-shadow: none;
+  transition: background-color 150ms ease;
+}
+
+switch:checked slider {
+  background-color: @bg_color;
+}
+
+switch:disabled {
+  opacity: 0.5;
+}
+
+/* ============================================================
+   ProgressBar
+   ============================================================ */
+
+progressbar {
+  background-color: transparent;
+}
+
+progressbar trough {
+  background-color: @bg_tertiary;
+  border: 1px solid @border_color;
+  border-radius: 4px;
+  min-height: 6px;
+}
+
+progressbar progress {
+  background-color: @accent_color;
+  border-radius: 4px;
+  min-height: 6px;
+}
+
+levelbar trough {
+  background-color: @bg_tertiary;
+  border: 1px solid @border_color;
+  border-radius: 4px;
+  min-height: 6px;
+}
+
+levelbar block.filled {
+  background-color: @accent_color;
+  border-radius: 4px;
+}
+
+levelbar block.empty {
+  background-color: @bg_tertiary;
+}
+
+/* ============================================================
+   Scale / Slider
+   ============================================================ */
+
+scale trough {
+  background-color: @bg_tertiary;
+  border: 1px solid @border_color;
+  border-radius: 4px;
+  min-height: 4px;
+}
+
+scale highlight {
+  background-color: @accent_color;
+  border-radius: 4px;
+}
+
+scale slider {
+  background-color: @accent_color;
+  border: 1px solid @accent_color;
+  border-radius: 9999px;
+  min-width: 16px;
+  min-height: 16px;
+  box-shadow: none;
+  transition: background-color 80ms ease;
+}
+
+scale slider:hover {
+  background-color: #b99ffb;
+}
+
+/* ============================================================
+   Tooltip
+   ============================================================ */
+
+tooltip {
+  background-color: @bg_secondary;
+  color: @text_primary;
+  border: 1px solid @border_color;
+  border-radius: 6px;
+  padding: 4px 8px;
+  box-shadow: none;
+}
+
+tooltip label {
+  color: @text_primary;
+}
+
+/* ============================================================
+   Separator
+   ============================================================ */
+
+separator {
+  background-color: @border_color;
+  min-width: 1px;
+  min-height: 1px;
+  margin: 2px 0;
+}
+
+separator.horizontal {
+  min-height: 1px;
+}
+
+separator.vertical {
+  min-width: 1px;
+}
+
+/* ============================================================
+   Notebook / Tabs
+   ============================================================ */
+
+notebook {
+  background-color: @bg_color;
+}
+
+notebook > header {
+  background-color: @bg_secondary;
+  border-bottom: 1px solid @border_color;
+  padding: 4px;
+}
+
+notebook > header tabs tab {
+  background-color: transparent;
+  color: @text_secondary;
+  border-radius: 6px;
+  padding: 6px 14px;
+  border: none;
+  box-shadow: none;
+  transition: background-color 100ms ease, color 100ms ease;
+}
+
+notebook > header tabs tab:checked {
+  background-color: @bg_tertiary;
+  color: @text_primary;
+}
+
+notebook > header tabs tab:hover {
+  background-color: @bg_tertiary;
+  color: @text_primary;
+}
+
+/* ============================================================
+   Sidebar
+   ============================================================ */
+
+.sidebar {
+  background-color: @bg_secondary;
+  border-right: 1px solid @border_color;
+}
+
+.sidebar row {
+  padding: 8px 12px;
+  border-radius: 6px;
+  color: @text_secondary;
+}
+
+.sidebar row:hover {
+  background-color: @bg_tertiary;
+  color: @text_primary;
+}
+
+.sidebar row:selected {
+  background-color: @bg_tertiary;
+  color: @accent_color;
+}
+
+/* ============================================================
+   Combobox / DropDown
+   ============================================================ */
+
+combobox,
+dropdown {
+  background-color: @bg_tertiary;
+  border: 1px solid @border_color;
+  border-radius: 8px;
+  color: @text_primary;
+  box-shadow: none;
+}
+
+combobox button,
+dropdown button {
+  background-color: transparent;
+  border: none;
+  border-radius: 8px;
+  box-shadow: none;
+}
+
+combobox button:hover,
+dropdown button:hover {
+  background-color: #26262d;
+}
+
+/* ============================================================
+   Frame / Box
+   ============================================================ */
+
+frame > border {
+  border: 1px solid @border_color;
+  border-radius: 8px;
+  padding: 8px;
+}
+
+frame.flat > border {
+  border: none;
+  padding: 0;
+}
+
+/* ============================================================
+   Expander
+   ============================================================ */
+
+expander title {
+  color: @text_primary;
+  padding: 6px 0;
+}
+
+expander title:hover {
+  color: @accent_color;
+}
+
+/* ============================================================
+   Color / Status accents
+   ============================================================ */
+
+.accent {
+  color: @accent_color;
+}
+
+.dim-label,
+label.dim-label {
+  color: @text_secondary;
+  opacity: 0.7;
+}
+
+.error,
+.warning-icon {
+  color: @destructive_color;
+}
+
+.success-icon {
+  color: @success_color;
+}
+
+/* ============================================================
+   HeaderBar back/forward buttons
+   ============================================================ */
+
+.navigation-sidebar {
+  background-color: @bg_secondary;
+  border-right: 1px solid @border_color;
+}
+
+/* ============================================================
+   FileChooser
+   ============================================================ */
+
+filechooser .path-bar button {
+  background-color: @bg_tertiary;
+  border-color: @border_color;
+}
+
+/* ============================================================
+   Scrolled Window
+   ============================================================ */
+
+scrolledwindow overshoot {
+  background-color: transparent;
+}
+
+scrolledwindow undershoot {
+  background-color: transparent;
+}

@@ -1,0 +1,64 @@
+/* ─── Axon Intent Bar ─────────────────────────────────────────────────────── */
+
+.axon-intentbar {
+    background-color: #17171a;
+    border-radius: 12px;
+    padding: 16px;
+    border: 1px solid #2a2a2e;
+    min-width: 600px;
+    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.6);
+}
+
+/* Input field — target both the St.Entry wrapper and the inner ClutterText */
+.axon-intentbar-input,
+.axon-intentbar-input StEntry,
+.axon-intentbar-input > StEntry {
+    background-color: transparent;
+    background: transparent;
+    color: #e0e0e0;
+    font-size: 18px;
+    border: none;
+    border-radius: 0;
+    box-shadow: none;
+    caret-color: #a78bfa;
+    padding: 4px 0;
+    selection-background-color: #a78bfa44;
+}
+
+/* Remove focus ring on the entry wrapper */
+.axon-intentbar-input:focus,
+.axon-intentbar-input StEntry:focus {
+    border: none;
+    box-shadow: none;
+    background-color: transparent;
+}
+
+/* ─── Response label ──────────────────────────────────────────────────────── */
+
+.axon-response {
+    color: #888888;
+    font-size: 14px;
+    margin-top: 10px;
+    padding-top: 10px;
+    border-top: 1px solid #2a2a2e;
+}
+
+/* ─── Space Indicator (panel) ─────────────────────────────────────────────── */
+
+.axon-space-indicator {
+    spacing: 4px;
+    padding: 0 8px;
+}
+
+.axon-space-dot {
+    font-size: 10px;
+    width: 8px;
+    height: 8px;
+    margin-right: 4px;
+    border-radius: 4px;
+}
+
+.axon-space-label {
+    color: #e0e0e0;
+    font-size: 13px;
+}
