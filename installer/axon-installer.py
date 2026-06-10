@@ -565,9 +565,9 @@ class InstallerApp(Adw.ApplicationWindow):
                 root_device = f"{device}p{new_root_num}" if device[-1].isdigit() else f"{device}{new_root_num}"
                 efi_device = f"{device}p{efi_num}" if device[-1].isdigit() else f"{device}{efi_num}"
 
+            import crypt
             import os
             import subprocess
-            import crypt
 
             def get_uuid(dev_path):
                 try:
