@@ -97,3 +97,6 @@ dmypy.json
 *.swp
 *.swo
 *~
+
+# Ignore build ISOs
+*.iso
