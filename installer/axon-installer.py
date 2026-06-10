@@ -430,7 +430,9 @@ class InstallerApp(Adw.ApplicationWindow):
                 self._back_btn.set_visible(True)
 
     def _on_try_clicked(self) -> None:
-        print("Live Preview Mode triggered.")
+        from axon_logger import configure_app_logger
+        logger = configure_app_logger(__name__)
+        logger.info("Live Preview Mode triggered.")
         self.get_application().quit()
 
     def _on_install_clicked(self) -> None:

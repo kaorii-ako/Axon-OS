@@ -761,34 +761,36 @@ def draw_watermark(img):
 #  MAIN
 # ══════════════════════════════════════════════════════════════════════════════
 def main():
-    print("Generating Axon OS futuristic desktop preview (1920×1080)...")
+    from axon_logger import configure_app_logger
+    logger = configure_app_logger(__name__)
+    logger.info("Generating Axon OS futuristic desktop preview (1920×1080)...")
     img = Image.new("RGBA", (W, H), (4, 4, 12, 255))
 
-    print("  [1/9] Background — aurora nebula + star field...")
+    logger.info("  [1/9] Background — aurora nebula + star field...")
     draw_background(img)
 
-    print("  [2/9] Code editor window...")
+    logger.info("  [2/9] Code editor window...")
     draw_code_editor(img, 40, 48, 820, 560)
 
-    print("  [3/9] Terminal window...")
+    logger.info("  [3/9] Terminal window...")
     draw_terminal(img, 76, 168, 740, 380)
 
-    print("  [4/9] AI panel...")
+    logger.info("  [4/9] AI panel...")
     draw_ai_panel(img)
 
-    print("  [5/9] System monitor widget...")
+    logger.info("  [5/9] System monitor widget...")
     draw_sysmon(img)
 
-    print("  [6/9] Menu bar...")
+    logger.info("  [6/9] Menu bar...")
     draw_menubar(img)
 
-    print("  [7/9] Intent bar (Spotlight)...")
+    logger.info("  [7/9] Intent bar (Spotlight)...")
     draw_intent_bar(img)
 
-    print("  [8/9] Dock...")
+    logger.info("  [8/9] Dock...")
     draw_dock(img)
 
-    print("  [9/9] Notification + watermark...")
+    logger.info("  [9/9] Notification + watermark...")
     draw_notification(img)
     draw_watermark(img)
 
@@ -798,7 +800,7 @@ def main():
     final = ImageEnhance.Contrast(final).enhance(1.05)
 
     final.save(OUT, "PNG", compress_level=6)
-    print(f"\n  ✓ Saved: {OUT}")
+    logger.info("\n  ✓ Saved: %s", OUT)
     return OUT
 
 if __name__ == "__main__":

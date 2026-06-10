@@ -81,7 +81,9 @@ def main():
     draw_mark(256).save(os.path.join(HERE, "logo.png"))
     draw_mark(64).save(os.path.join(HERE, "icon.png"))
     make_welcome().save(os.path.join(HERE, "welcome.png"))
-    print(f"Branding images written to {HERE}")
+    from axon_logger import configure_app_logger
+    logger = configure_app_logger(__name__)
+    logger.info("Branding images written to %s", HERE)
 
 
 if __name__ == "__main__":

@@ -18,6 +18,8 @@ from typing import Callable, Optional
 
 import dbus
 from gi.repository import GLib
+from axon_logger import configure_app_logger
+logger = configure_app_logger(__name__)
 
 
 class AIHelper:
@@ -133,10 +135,14 @@ class AIHelper:
         )
         context = self._get_context_string()
         try:
-            assert self._brain is not None
+            if self._brain is None:
+                logger.warning("AI diagnosis requested but Brain is not connected")
+                GLib.idle_add(callback, "⚠ AI diagnosis unavailable — Brain service is offline.")
+                return
             result = str(self._brain.Generate(prompt, context, "", False))
             GLib.idle_add(callback, result)
         except Exception as exc:
+            logger.exception("AI diagnosis failed: %s", exc)
             GLib.idle_add(callback, f"⚠ AI diagnosis failed: {exc}")
 
     # ------------------------------------------------------------------
@@ -178,7 +184,10 @@ class AIHelper:
         )
         context = self._get_context_string()
         try:
-            assert self._brain is not None
+            if self._brain is None:
+                logger.warning("Translate requested but Brain is not connected")
+                GLib.idle_add(callback, "")
+                return
             result = str(self._brain.Generate(prompt, context, "", False)).strip()
             # Strip any accidental backtick wrapping
             if result.startswith("```") and result.endswith("```"):
@@ -187,6 +196,7 @@ class AIHelper:
                 result = result[1:-1].strip()
             GLib.idle_add(callback, result)
         except Exception:
+            logger.exception("Translate to command failed")
             GLib.idle_add(callback, "")
 
     # ------------------------------------------------------------------
@@ -232,12 +242,16 @@ class AIHelper:
         )
         context = self._get_context_string()
         try:
-            assert self._brain is not None
+            if self._brain is None:
+                logger.warning("Suggestions requested but Brain is not connected")
+                GLib.idle_add(callback, [])
+                return
             raw = str(self._brain.Generate(prompt, context, "", False)).strip()
             # Try to parse JSON array from the response
             suggestions = self._parse_suggestions(raw)
             GLib.idle_add(callback, suggestions)
         except Exception:
+            logger.exception("Suggestion generation failed")
             GLib.idle_add(callback, [])
 
     @staticmethod

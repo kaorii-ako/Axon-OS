@@ -62,7 +62,9 @@ def main():
 
     out = os.path.join(HERE, "axon-aurora.png")
     img.save(out, optimize=True)
-    print(f"Wallpaper written to {out} ({os.path.getsize(out) // 1024} KiB)")
+    from axon_logger import configure_app_logger
+    logger = configure_app_logger(__name__)
+    logger.info("Wallpaper written to %s (%s KiB)", out, os.path.getsize(out) // 1024)
 
 
 if __name__ == "__main__":

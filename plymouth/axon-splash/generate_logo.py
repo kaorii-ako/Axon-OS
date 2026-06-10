@@ -88,4 +88,6 @@ out_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "axon.png")
 with open(out_path, "wb") as f:
     f.write(_make_png(pixels))
 
-print(f"Written: {out_path}  ({WIDTH}x{HEIGHT} px)")
+from axon_logger import configure_app_logger
+logger = configure_app_logger(__name__)
+logger.info("Written: %s  (%sx%s px)", out_path, WIDTH, HEIGHT)
