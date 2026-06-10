@@ -1,7 +1,8 @@
 import json
 import subprocess
+
 import dbus
-from pathlib import Path
+
 
 class SettingsExecutor:
     def __init__(self):
@@ -45,7 +46,9 @@ class SettingsExecutor:
         )
 
         try:
-            response_str = str(self._brain.Generate(query, "", "", False))
+            response_str = str(
+                self._brain.Generate(f"{system_prompt}\n\nUser request: {query}", "", "", False)
+            )
             response_str = response_str.strip()
             if response_str.startswith("```"):
                 response_str = response_str.replace("```json", "").replace("```", "").strip()
@@ -97,7 +100,7 @@ class SettingsExecutor:
                     raise ValueError("Volume must be between 0 and 100")
                 subprocess.run(["pactl", "set-sink-volume", "@DEFAULT_SINK@", f"{vol}%"], check=True)
                 return {"success": True, "message": f"Volume adjusted to {vol}%."}
-        except Exception as e:
+        except Exception:
             # Fallback to amixer if pactl fails
             try:
                 if value == "mute":

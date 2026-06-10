@@ -1,291 +1,291 @@
 #!/usr/bin/env bash
+# Axon OS — Master ISO Build Script
+#
+# Builds a bootable hybrid (BIOS + UEFI) live ISO of Axon OS on top of
+# Ubuntu 24.04 (noble) using debootstrap + casper + GRUB + xorriso.
+# No live-build dependency; works on any Ubuntu/Debian host and on
+# GitHub Actions ubuntu-24.04 runners.
+#
+# Usage:
+#   sudo bash build/build.sh [--ci] [--compression xz|gzip] [--keep-chroot]
+#
+# Environment:
+#   AXON_BUILD_DIR   Work directory (default: /tmp/axon-build)
 set -euo pipefail
 
-# Axon OS — Master Build Script
-# Produces a bootable ISO using live-build on Ubuntu Noble (24.04).
-
-VERSION="0.1.0-alpha"
-ISO_NAME="axon-os-${VERSION}.iso"
+VERSION="0.1.0"
+ARCH="amd64"
+DIST="noble"
+MIRROR="http://archive.ubuntu.com/ubuntu/"
+ISO_NAME="axon-os-${VERSION}-${ARCH}.iso"
+VOLID="AXON_OS"
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 BASE_DIR="$(cd "${SCRIPT_DIR}/.." && pwd)"
 
-WORK_DIR="/tmp/axon-build"
-CHROOT_OVERLAY="${WORK_DIR}/config/includes.chroot"
+WORK_DIR="${AXON_BUILD_DIR:-/tmp/axon-build}"
+CHROOT="${WORK_DIR}/chroot"
+IMAGE="${WORK_DIR}/image"
+STAGING="${WORK_DIR}/staging"
+DIST_DIR="${BASE_DIR}/dist"
 
-# Default options
-COMPRESSION="gzip"
-PURGE_CACHE=false
+COMPRESSION="xz"
+KEEP_CHROOT=false
 
-# Parse arguments
 for arg in "$@"; do
     case "${arg}" in
-        --release)
-            COMPRESSION="xz"
-            ;;
-        --purge)
-            PURGE_CACHE=true
-            ;;
-        *)
-            ;;
+        --ci) ;; # reserved; everything is already non-interactive
+        --compression=*) COMPRESSION="${arg#*=}" ;;
+        --keep-chroot) KEEP_CHROOT=true ;;
+        *) echo "[axon-build] Unknown option: ${arg}" >&2; exit 2 ;;
     esac
 done
 
+log() { echo "[axon-build] $*"; }
+die() { echo "[axon-build] ERROR: $*" >&2; exit 1; }
+
 # ---------------------------------------------------------------------------
-# check_deps
-# Verifies that all required build tools are available on the host.
+# Preflight
 # ---------------------------------------------------------------------------
+[[ ${EUID} -eq 0 ]] || die "This script must run as root (try: sudo bash build/build.sh)"
+
 check_deps() {
-    echo "[axon-build] Checking build dependencies..."
-
-    local deps=(live-build debootstrap xorriso mksquashfs wget rsync)
+    local deps=(debootstrap mksquashfs xorriso grub-mkstandalone mkfs.vfat mmd mcopy rsync)
     local missing=()
-
     for dep in "${deps[@]}"; do
-        if ! command -v "${dep}" &>/dev/null; then
-            missing+=("${dep}")
-        fi
+        command -v "${dep}" &>/dev/null || missing+=("${dep}")
     done
-
+    [[ -f /usr/lib/grub/i386-pc/cdboot.img ]] || missing+=("grub-pc-bin")
     if [[ ${#missing[@]} -gt 0 ]]; then
-        echo "[axon-build] ERROR: Missing required tools: ${missing[*]}" >&2
-        echo "[axon-build] Install them with:" >&2
-        echo "  sudo apt-get install -y ${missing[*]}" >&2
-        exit 1
+        die "Missing tools: ${missing[*]}
+Install with: sudo apt-get install -y debootstrap squashfs-tools xorriso grub-pc-bin grub-efi-amd64-bin mtools dosfstools rsync"
     fi
-
-    echo "[axon-build] All dependencies satisfied."
+    log "All build dependencies satisfied."
 }
 
 # ---------------------------------------------------------------------------
-# setup_workdir
-# Creates and enters the temporary build working directory.
+# Chroot mount management
 # ---------------------------------------------------------------------------
-setup_workdir() {
-    echo "[axon-build] Setting up work directory at ${WORK_DIR}..."
+MOUNTED=false
 
-    if [[ -d "${WORK_DIR}" ]]; then
-        if [[ "${PURGE_CACHE}" == "true" ]]; then
-            echo "[axon-build] Purging work directory and cache..."
-            (cd "${WORK_DIR}" && sudo lb clean --purge || true)
-            sudo rm -rf "${WORK_DIR}"
-        else
-            echo "[axon-build] Found existing work directory. Cleaning build artifacts while preserving package cache..."
-            (cd "${WORK_DIR}" && sudo lb clean)
-        fi
+mount_chroot() {
+    mount --bind /dev "${CHROOT}/dev"
+    mount --bind /dev/pts "${CHROOT}/dev/pts"
+    mount -t proc proc "${CHROOT}/proc"
+    mount -t sysfs sysfs "${CHROOT}/sys"
+    cp /etc/resolv.conf "${CHROOT}/etc/resolv.conf"
+    MOUNTED=true
+}
+
+umount_chroot() {
+    [[ "${MOUNTED}" == "true" ]] || return 0
+    umount -lf "${CHROOT}/dev/pts" 2>/dev/null || true
+    umount -lf "${CHROOT}/dev" 2>/dev/null || true
+    umount -lf "${CHROOT}/proc" 2>/dev/null || true
+    umount -lf "${CHROOT}/sys" 2>/dev/null || true
+    MOUNTED=false
+}
+trap umount_chroot EXIT
+
+# ---------------------------------------------------------------------------
+# Phase 1: bootstrap base system
+# ---------------------------------------------------------------------------
+bootstrap() {
+    if [[ -d "${CHROOT}" && "${KEEP_CHROOT}" == "true" ]]; then
+        log "Reusing existing chroot at ${CHROOT} (--keep-chroot)."
+        return 0
     fi
-
-    mkdir -p "${WORK_DIR}"
-    cd "${WORK_DIR}"
-
-    echo "[axon-build] Work directory ready: ${WORK_DIR}"
+    rm -rf "${CHROOT}"
+    mkdir -p "${CHROOT}"
+    log "Bootstrapping Ubuntu ${DIST} (${ARCH})... (this downloads ~100 MB)"
+    debootstrap --arch="${ARCH}" "${DIST}" "${CHROOT}" "${MIRROR}"
 }
 
 # ---------------------------------------------------------------------------
-# configure_chroot
-# Runs lb config to set up a live-build tree targeting Ubuntu Noble amd64.
+# Phase 2: configure the chroot (packages + Axon components)
 # ---------------------------------------------------------------------------
 configure_chroot() {
-    echo "[axon-build] Configuring live-build (Ubuntu Noble / amd64)..."
+    log "Copying project sources into chroot..."
+    mkdir -p "${CHROOT}/opt/axon-src"
+    rsync -a --delete \
+        --exclude='.git' --exclude='.idea' --exclude='dist' \
+        --exclude='__pycache__' --exclude='*.pyc' --exclude='*.iso' \
+        "${BASE_DIR}/" "${CHROOT}/opt/axon-src/"
 
-    lb config \
-        --mode ubuntu \
-        --distribution noble \
-        --architecture amd64 \
-        --archive-areas "main restricted universe multiverse" \
-        --mirror-bootstrap "http://archive.ubuntu.com/ubuntu/" \
-        --mirror-chroot "http://archive.ubuntu.com/ubuntu/" \
-        --mirror-chroot-security "http://security.ubuntu.com/ubuntu/" \
-        --mirror-binary "http://archive.ubuntu.com/ubuntu/" \
-        --mirror-binary-security "http://security.ubuntu.com/ubuntu/" \
-        --apt-options "--yes --no-install-recommends" \
-        --debian-installer false \
-        --bootappend-live "boot=live components quiet splash" \
-        --iso-application "Axon OS" \
-        --iso-publisher "Axon OS Project" \
-        --iso-volume "AXON_OS_${VERSION}" \
-        --checksums sha256 \
-        --compression "${COMPRESSION}"
-
-    # Copy package list into live-build config
-    mkdir -p "${WORK_DIR}/config/package-lists"
-    cp "${SCRIPT_DIR}/config/packages.list" \
-       "${WORK_DIR}/config/package-lists/axon.list.chroot"
-
-    # Copy first-boot and ollama setup scripts into the live system
-    mkdir -p "${CHROOT_OVERLAY}/usr/local/bin"
-    cp "${SCRIPT_DIR}/config/ollama-setup.sh" \
-       "${CHROOT_OVERLAY}/usr/local/bin/axon-ollama-setup"
-    cp "${SCRIPT_DIR}/config/firstboot.sh" \
-       "${CHROOT_OVERLAY}/usr/local/bin/axon-firstboot"
-    chmod +x \
-        "${CHROOT_OVERLAY}/usr/local/bin/axon-ollama-setup" \
-        "${CHROOT_OVERLAY}/usr/local/bin/axon-firstboot"
-
-    echo "[axon-build] live-build configuration complete."
+    log "Entering chroot to install system (this takes a while)..."
+    mount_chroot
+    chroot "${CHROOT}" /usr/bin/env \
+        AXON_VERSION="${VERSION}" \
+        /bin/bash /opt/axon-src/build/config/chroot-setup.sh
+    umount_chroot
+    rm -f "${CHROOT}/etc/resolv.conf"
+    # The installed system manages resolv.conf via systemd-resolved
+    ln -fs ../run/systemd/resolve/stub-resolv.conf "${CHROOT}/etc/resolv.conf"
 }
 
 # ---------------------------------------------------------------------------
-# copy_files
-# Rsyncs project source trees into the chroot overlay at correct system paths.
+# Phase 3: live image tree (kernel, initrd, squashfs, manifests)
 # ---------------------------------------------------------------------------
-copy_files() {
-    echo "[axon-build] Copying project files into chroot overlay..."
+build_image_tree() {
+    log "Assembling live image tree..."
+    rm -rf "${IMAGE}" "${STAGING}"
+    mkdir -p "${IMAGE}/casper" "${IMAGE}/boot/grub" "${IMAGE}/.disk" "${STAGING}"
 
-    # Helper: only copy if source directory exists
-    _rsync_if_exists() {
-        local src="${1}"
-        local dst="${2}"
-        if [[ -d "${src}" ]]; then
-            mkdir -p "${dst}"
-            rsync -a --exclude='*.pyc' --exclude='__pycache__' \
-                  "${src}/" "${dst}/"
-            echo "[axon-build]   Copied: ${src} -> ${dst}"
-        else
-            echo "[axon-build]   Skipped (not found): ${src}"
-        fi
-    }
+    # Kernel + initrd (newest installed version)
+    local kernel initrd
+    kernel="$(find "${CHROOT}/boot" -maxdepth 1 -name 'vmlinuz-*' | sort -V | tail -1)"
+    initrd="$(find "${CHROOT}/boot" -maxdepth 1 -name 'initrd.img-*' | sort -V | tail -1)"
+    [[ -n "${kernel}" && -n "${initrd}" ]] || die "Kernel or initrd not found in chroot /boot"
+    cp "${kernel}" "${IMAGE}/casper/vmlinuz"
+    cp "${initrd}" "${IMAGE}/casper/initrd"
 
-    # Shell / session scripts -> /usr/lib/axon/shell
-    _rsync_if_exists \
-        "${BASE_DIR}/shell" \
-        "${CHROOT_OVERLAY}/usr/lib/axon/shell"
+    # Package manifest (used by installers and for reproducibility)
+    chroot "${CHROOT}" dpkg-query -W --showformat='${Package} ${Version}\n' \
+        > "${IMAGE}/casper/filesystem.manifest"
+    cp "${IMAGE}/casper/filesystem.manifest" "${IMAGE}/casper/filesystem.manifest-desktop"
 
-    # Theme assets -> /usr/share/themes/Axon
-    _rsync_if_exists \
-        "${BASE_DIR}/theme" \
-        "${CHROOT_OVERLAY}/usr/share/themes/Axon"
+    log "Compressing root filesystem (squashfs, ${COMPRESSION})..."
+    local comp_args=(-comp "${COMPRESSION}")
+    [[ "${COMPRESSION}" == "xz" ]] && comp_args+=(-b 1M)
+    mksquashfs "${CHROOT}" "${IMAGE}/casper/filesystem.squashfs" \
+        -noappend -wildcards "${comp_args[@]}" \
+        -e 'proc/*' 'sys/*' 'dev/*' 'run/*' 'tmp/*' 'opt/axon-src' \
+           'boot/grub/grub.cfg' 'var/cache/apt/archives/*.deb' \
+           'root/.bash_history' 'home/*'
 
-    # Application source -> /usr/lib/axon/apps
-    _rsync_if_exists \
-        "${BASE_DIR}/apps" \
-        "${CHROOT_OVERLAY}/usr/lib/axon/apps"
+    du -sx --block-size=1 "${CHROOT}" | cut -f1 > "${IMAGE}/casper/filesystem.size"
 
-    # D-Bus Services -> /usr/lib/axon/services
-    _rsync_if_exists \
-        "${BASE_DIR}/services" \
-        "${CHROOT_OVERLAY}/usr/lib/axon/services"
+    echo "Axon OS ${VERSION} \"Pulse\" - Release ${ARCH} ($(date +%Y%m%d))" > "${IMAGE}/.disk/info"
+    touch "${IMAGE}/.disk/base_installable"
+    echo 'full_cd/single' > "${IMAGE}/.disk/cd_type"
 
-    # D-Bus session policies -> /usr/share/dbus-1/session.d
-    mkdir -p "${CHROOT_OVERLAY}/usr/share/dbus-1/session.d"
-    if [[ -f "${BASE_DIR}/services/axon-brain/org.axonos.Brain.conf" ]]; then
-        cp "${BASE_DIR}/services/axon-brain/org.axonos.Brain.conf" \
-           "${CHROOT_OVERLAY}/usr/share/dbus-1/session.d/org.axonos.Brain.conf"
-    fi
-    if [[ -f "${BASE_DIR}/services/axon-context/org.axonos.Context.conf" ]]; then
-        cp "${BASE_DIR}/services/axon-context/org.axonos.Context.conf" \
-           "${CHROOT_OVERLAY}/usr/share/dbus-1/session.d/org.axonos.Context.conf"
-    fi
+    # GRUB search marker so the bootloader finds this volume on any device
+    touch "${IMAGE}/${VOLID}"
 
-    # Application launch templates -> /usr/lib/axon/data/applications
-    _rsync_if_exists \
-        "${BASE_DIR}/data/applications" \
-        "${CHROOT_OVERLAY}/usr/lib/axon/data/applications"
+    cat > "${IMAGE}/boot/grub/grub.cfg" <<EOF
+set default="0"
+set timeout=10
 
-    # Plymouth theme -> /usr/share/plymouth/themes/axon
-    _rsync_if_exists \
-        "${BASE_DIR}/plymouth" \
-        "${CHROOT_OVERLAY}/usr/share/plymouth/themes/axon"
+insmod all_video
+insmod gfxterm
 
-    # Calamares main settings -> /etc/calamares/settings.conf
-    if [[ -f "${BASE_DIR}/installer/settings.conf" ]]; then
-        mkdir -p "${CHROOT_OVERLAY}/etc/calamares"
-        cp "${BASE_DIR}/installer/settings.conf" \
-           "${CHROOT_OVERLAY}/etc/calamares/settings.conf"
-        echo "[axon-build]   Copied: installer/settings.conf -> /etc/calamares/settings.conf"
-    fi
-
-    # Calamares branding -> /usr/share/calamares/branding/axon
-    _rsync_if_exists \
-        "${BASE_DIR}/installer/branding/axon" \
-        "${CHROOT_OVERLAY}/usr/share/calamares/branding/axon"
-
-    # Calamares module overrides -> /etc/calamares/modules
-    _rsync_if_exists \
-        "${BASE_DIR}/installer/modules" \
-        "${CHROOT_OVERLAY}/etc/calamares/modules"
-
-    # Axon OS version file
-    mkdir -p "${CHROOT_OVERLAY}/etc"
-    cat > "${CHROOT_OVERLAY}/etc/axon-release" <<EOF
-AXON_VERSION=${VERSION}
-AXON_BUILD_DATE=$(date -Iseconds)
-AXON_CODENAME=Pulse
+menuentry "Try or Install Axon OS ${VERSION}" {
+    linux /casper/vmlinuz boot=casper quiet splash ---
+    initrd /casper/initrd
+}
+menuentry "Axon OS (safe graphics)" {
+    linux /casper/vmlinuz boot=casper nomodeset quiet splash ---
+    initrd /casper/initrd
+}
+menuentry "Check disc for defects" {
+    linux /casper/vmlinuz boot=casper integrity-check quiet splash ---
+    initrd /casper/initrd
+}
 EOF
-
-    echo "[axon-build] File copy complete."
 }
 
 # ---------------------------------------------------------------------------
-# build_iso
-# Runs lb build and copies the resulting ISO to the project root.
+# Phase 4: BIOS + UEFI bootloaders, hybrid ISO via xorriso
 # ---------------------------------------------------------------------------
 build_iso() {
-    echo "[axon-build] Starting lb build (this will take a while)..."
+    log "Building bootloader images..."
 
-    sudo lb build 2>&1 | tee "${WORK_DIR}/build.log"
+    # Tiny embedded config: locate the live volume, chain to the real grub.cfg
+    cat > "${STAGING}/grub-embed.cfg" <<EOF
+search --set=root --file /${VOLID}
+set prefix=(\$root)/boot/grub
+configfile \$prefix/grub.cfg
+EOF
 
-    # Locate the generated ISO (live-build outputs to the work dir root)
-    local generated_iso
-    generated_iso="$(find "${WORK_DIR}" -maxdepth 1 -name "*.iso" | head -1)"
+    # UEFI: standalone GRUB EFI binary inside a FAT image
+    grub-mkstandalone -O x86_64-efi \
+        --modules="part_gpt part_msdos fat iso9660 search configfile normal linux all_video gfxterm" \
+        --locales="" --themes="" --fonts="" \
+        -o "${STAGING}/bootx64.efi" \
+        "boot/grub/grub.cfg=${STAGING}/grub-embed.cfg"
 
-    if [[ -z "${generated_iso}" ]]; then
-        echo "[axon-build] ERROR: No ISO found after lb build." >&2
-        echo "[axon-build] Check ${WORK_DIR}/build.log for details." >&2
-        exit 1
+    dd if=/dev/zero of="${STAGING}/efiboot.img" bs=1M count=16 status=none
+    mkfs.vfat -F 16 "${STAGING}/efiboot.img" >/dev/null
+    mmd -i "${STAGING}/efiboot.img" efi efi/boot
+    mcopy -i "${STAGING}/efiboot.img" "${STAGING}/bootx64.efi" ::efi/boot/bootx64.efi
+
+    # BIOS: standalone GRUB core prefixed with El Torito CD boot image
+    grub-mkstandalone -O i386-pc \
+        --modules="linux16 linux normal iso9660 biosdisk memdisk search configfile all_video gfxterm" \
+        --locales="" --fonts="" --install-modules="linux16 linux normal iso9660 biosdisk search configfile all_video gfxterm" \
+        -o "${STAGING}/core.img" \
+        "boot/grub/grub.cfg=${STAGING}/grub-embed.cfg"
+    cat /usr/lib/grub/i386-pc/cdboot.img "${STAGING}/core.img" > "${STAGING}/bios.img"
+
+    # Integrity checksums for the "Check disc" boot entry
+    (cd "${IMAGE}" && find . -type f -print0 | xargs -0 md5sum | \
+        grep -v -e 'md5sum.txt' > md5sum.txt)
+
+    log "Creating hybrid ISO with xorriso..."
+    mkdir -p "${DIST_DIR}"
+    xorriso -as mkisofs \
+        -iso-level 3 \
+        -full-iso9660-filenames \
+        -joliet -joliet-long -rational-rock \
+        -volid "${VOLID}" \
+        -output "${DIST_DIR}/${ISO_NAME}" \
+        -eltorito-boot boot/grub/bios.img \
+            -no-emul-boot \
+            -boot-load-size 4 \
+            -boot-info-table \
+            --eltorito-catalog boot/grub/boot.cat \
+            --grub2-boot-info \
+            --grub2-mbr /usr/lib/grub/i386-pc/boot_hybrid.img \
+        -eltorito-alt-boot \
+            -e EFI/efiboot.img \
+            -no-emul-boot \
+        -append_partition 2 0xef "${STAGING}/efiboot.img" \
+        -graft-points \
+            "/EFI/efiboot.img=${STAGING}/efiboot.img" \
+            "/boot/grub/bios.img=${STAGING}/bios.img" \
+            "${IMAGE}"
+
+    (cd "${DIST_DIR}" && sha256sum "${ISO_NAME}" > "${ISO_NAME}.sha256")
+
+    # Hand the artifacts back to the invoking (non-root) user where possible
+    if [[ -n "${SUDO_UID:-}" ]]; then
+        chown "${SUDO_UID}:${SUDO_GID:-${SUDO_UID}}" \
+            "${DIST_DIR}" "${DIST_DIR}/${ISO_NAME}" "${DIST_DIR}/${ISO_NAME}.sha256"
     fi
 
-    local output_path="${BASE_DIR}/${ISO_NAME}"
-    cp "${generated_iso}" "${output_path}"
-
-    local iso_size
-    iso_size="$(du -sh "${output_path}" | cut -f1)"
-
-    echo "[axon-build] ISO produced: ${output_path} (${iso_size})"
-
-    # Generate checksum
-    sha256sum "${output_path}" > "${output_path}.sha256"
-    echo "[axon-build] SHA-256 checksum: ${output_path}.sha256"
-
-    # Also copy to the user's requested ISO files directory if it exists
-    local iso_dir="/home/gamingrf/Documents/Axons-OS/ISO files"
-    if [[ -d "${iso_dir}" ]]; then
-        cp "${generated_iso}" "${iso_dir}/${ISO_NAME}"
-        sha256sum "${iso_dir}/${ISO_NAME}" > "${iso_dir}/${ISO_NAME}.sha256"
-        echo "[axon-build] ISO copied to: ${iso_dir}/${ISO_NAME}"
-    fi
+    log "ISO produced: ${DIST_DIR}/${ISO_NAME} ($(du -sh "${DIST_DIR}/${ISO_NAME}" | cut -f1))"
+    log "SHA-256:      ${DIST_DIR}/${ISO_NAME}.sha256"
 }
 
 # ---------------------------------------------------------------------------
-# main
-# Orchestrates all build phases in order.
+# Main
 # ---------------------------------------------------------------------------
 main() {
-    echo "[axon-build] ============================================"
-    echo "[axon-build]  Axon OS Build System v${VERSION}"
-    echo "[axon-build]  Base: ${BASE_DIR}"
-    echo "[axon-build]  Target ISO: ${ISO_NAME}"
-    echo "[axon-build] ============================================"
+    log "============================================"
+    log " Axon OS Build System v${VERSION}"
+    log " Base:    Ubuntu ${DIST} (${ARCH})"
+    log " Workdir: ${WORK_DIR}"
+    log " Output:  ${DIST_DIR}/${ISO_NAME}"
+    log "============================================"
 
-    echo "[axon-build] Phase 1/5: Checking dependencies..."
+    log "Phase 1/4: Dependencies"
     check_deps
+    mkdir -p "${WORK_DIR}"
 
-    echo "[axon-build] Phase 2/5: Setting up work directory..."
-    setup_workdir
-
-    echo "[axon-build] Phase 3/5: Configuring chroot..."
+    log "Phase 2/4: Bootstrap + configure root filesystem"
+    bootstrap
     configure_chroot
 
-    echo "[axon-build] Phase 4/5: Copying project files..."
-    copy_files
+    log "Phase 3/4: Live image tree"
+    build_image_tree
 
-    echo "[axon-build] Phase 5/5: Building ISO..."
+    log "Phase 4/4: Bootable hybrid ISO"
     build_iso
 
-    echo "[axon-build] ============================================"
-    echo "[axon-build]  Build complete."
-    echo "[axon-build]  Output: ${BASE_DIR}/${ISO_NAME}"
-    echo "[axon-build] ============================================"
+    log "============================================"
+    log " Build complete: ${DIST_DIR}/${ISO_NAME}"
+    log " Test it:  qemu-system-x86_64 -enable-kvm -m 4G -cdrom '${DIST_DIR}/${ISO_NAME}'"
+    log "============================================"
 }
 
-main "$@"
+main

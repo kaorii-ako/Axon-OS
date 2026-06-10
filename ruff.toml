@@ -1,0 +1,8 @@
+# Axon OS — ruff configuration
+line-length = 100
+
+[lint]
+# E501: long lines tolerated in UI/string-heavy GTK code
+# E402: gi.require_version() must precede `from gi.repository import ...`,
+#       so module-level imports legitimately appear after code
+ignore = ["E501", "E402"]

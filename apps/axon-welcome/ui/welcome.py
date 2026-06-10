@@ -1,20 +1,18 @@
 """Axon OS Welcome App — WelcomeWindow (4-page onboarding wizard)."""
 
 import os
-import sys
-import shutil
 import subprocess
+import sys
 import threading
-import json
 from pathlib import Path
 
 import gi
+
 gi.require_version("Gtk", "4.0")
 gi.require_version("Adw", "1")
-from gi.repository import Adw, GLib, Gtk
-
 import dbus
 from dbus.mainloop.glib import DBusGMainLoop
+from gi.repository import Adw, GLib, Gtk
 
 # Insert axon-brain path so we can run hardware profiler
 sys.path.insert(0, str(Path(__file__).resolve().parents[3] / "services" / "axon-brain"))

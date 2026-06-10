@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
-import os
-import re
-import subprocess
-import shutil
 import json
+import re
+import shutil
+import subprocess
+
 
 def get_system_ram():
     """Returns total system RAM in GB."""
@@ -44,7 +44,7 @@ def get_gpu_info():
                     "vram": vram_mb / 1024.0,
                     "status": "detected"
                 }
-        except Exception as e:
+        except Exception:
             pass
 
     # 2. Try AMD ROCm

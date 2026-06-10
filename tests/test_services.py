@@ -1,12 +1,13 @@
 #!/usr/bin/env python3
-import os
-import sys
 import json
-import time
+import os
 import subprocess
+import sys
+import time
 import unittest
-import dbus
 from pathlib import Path
+
+import dbus
 
 # Paths
 TESTS_DIR = Path(__file__).resolve().parent

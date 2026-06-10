@@ -1,19 +1,16 @@
 #!/usr/bin/env python3
-import os
-import sys
 import json
-import uuid
+import sys
 import threading
-import sqlite3
-import urllib.request
 import urllib.error
-import tomllib
+import urllib.request
+import uuid
 from pathlib import Path
-from datetime import datetime
 
 import dbus
-import dbus.service
 import dbus.mainloop.glib
+import dbus.service
+import tomllib
 from gi.repository import GLib
 
 # Ensure we can import hardware_profiler and conversation_store

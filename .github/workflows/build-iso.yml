@@ -1,0 +1,86 @@
+name: Build ISO
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - main
+    paths:
+      - "build/**"
+      - "apps/**"
+      - "services/**"
+      - "shell/**"
+      - "theme/**"
+      - "data/**"
+      - "installer/**"
+      - "plymouth/**"
+      - ".github/workflows/build-iso.yml"
+    tags:
+      - "v*"
+
+permissions:
+  contents: write
+
+concurrency:
+  group: build-iso-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build-iso:
+    name: Build bootable ISO (amd64)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 180
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Free up runner disk space
+        run: |
+          sudo rm -rf /usr/local/lib/android /usr/share/dotnet \
+            /opt/ghc /usr/local/.ghcup /opt/hostedtoolcache/CodeQL
+          sudo docker image prune --all --force >/dev/null 2>&1 || true
+          echo "Free space on / and /mnt:"
+          df -h / /mnt
+
+      - name: Install build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            debootstrap squashfs-tools xorriso \
+            grub-pc-bin grub-efi-amd64-bin \
+            mtools dosfstools rsync
+
+      - name: Build ISO
+        run: sudo AXON_BUILD_DIR=/mnt/axon-build bash build/build.sh --ci
+
+      - name: Report artifacts
+        run: |
+          ls -lh dist/
+          cat dist/*.sha256
+
+      - name: Upload ISO artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: axon-os-iso
+          path: |
+            dist/*.iso
+            dist/*.sha256
+          compression-level: 0
+          retention-days: 14
+          if-no-files-found: error
+
+      - name: Attach ISO to release (tags only)
+        if: startsWith(github.ref, 'refs/tags/v')
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "${GITHUB_REF_NAME}" \
+            --title "Axon OS ${GITHUB_REF_NAME}" \
+            --generate-notes dist/*.sha256 || true
+          # Release assets are capped at 2 GiB; upload the ISO only if it fits
+          ISO=$(ls dist/*.iso)
+          if [ "$(stat -c%s "$ISO")" -lt 2147000000 ]; then
+            gh release upload "${GITHUB_REF_NAME}" "$ISO" --clobber
+          else
+            echo "ISO exceeds the 2 GiB release-asset limit; download it from the workflow artifact instead."
+          fi

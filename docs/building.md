@@ -13,41 +13,44 @@
 ```bash
 sudo apt-get update
 sudo apt-get install -y \
-    git curl wget \
-    build-essential meson ninja-build cmake \
-    python3 python3-pip python3-venv \
-    squashfs-tools xorriso isolinux \
-    debootstrap schroot \
-    qemu-system-x86 qemu-utils ovmf \
-    grub-efi-amd64-bin grub-common \
-    libgtk-4-dev libadwaita-1-dev \
-    gjs gir1.2-gjs-1.0 \
-    shellcheck ruff \
-    parted dosfstools e2fsprogs
+    debootstrap squashfs-tools xorriso \
+    grub-pc-bin grub-efi-amd64-bin \
+    mtools dosfstools rsync
 ```
+
+(Optionally add `qemu-system-x86 ovmf` for testing the ISO in a VM.)
 
 ## Build Steps
 
 ```bash
 # 1. Clone the repository
-git clone https://github.com/axonos/axon-os.git
-cd axon-os
+git clone https://github.com/kaorii-ako/Axon-OS.git
+cd Axon-OS
 
-# 2. Enter the build directory
-cd build
-
-# 3. Run the main build script
-bash build.sh
+# 2. Run the main build script (root required for debootstrap/chroot)
+sudo bash build/build.sh
 ```
 
 The script will:
-1. Bootstrap a minimal Debian/Ubuntu root filesystem with `debootstrap`.
-2. Install GNOME, Ollama, and all Axon OS components into the chroot.
-3. Copy the Plymouth splash theme.
+1. Bootstrap a minimal Ubuntu 24.04 (noble) root filesystem with `debootstrap`.
+2. Install the kernel, `casper` (Ubuntu live-boot), GNOME, and all Axon OS components into the chroot (`build/config/chroot-setup.sh`).
+3. Apply Axon branding: GTK theme, gschema defaults, Plymouth splash, wallpaper, Calamares installer.
 4. Build a SquashFS image of the root filesystem.
-5. Wrap everything in a bootable ISO with GRUB EFI and BIOS support.
+5. Wrap everything in a hybrid BIOS + UEFI bootable ISO with GRUB and `xorriso`.
 
-The finished ISO is written to `build/output/axon-os-<date>.iso`.
+The finished ISO is written to `dist/axon-os-<version>-amd64.iso` with a `.sha256` checksum alongside.
+
+Useful flags / environment:
+
+| Option | Effect |
+|--------|--------|
+| `--compression=gzip` | Faster squashfs (larger ISO); default is `xz` |
+| `--keep-chroot` | Reuse the existing chroot for iterative rebuilds |
+| `AXON_BUILD_DIR=/path` | Work directory (default `/tmp/axon-build`, needs ~15 GB) |
+
+## CI Builds (GitHub Actions)
+
+Every push to `main` that touches `build/`, `apps/`, `services/`, `shell/`, `theme/`, `data/`, `installer/`, or `plymouth/` runs the **Build ISO** workflow (`.github/workflows/build-iso.yml`). Download the finished ISO from the workflow run's **Artifacts** section (`axon-os-iso`). Tagged pushes (`v*`) also attach the ISO to a GitHub Release when it fits the 2 GiB asset limit.
 
 ## Testing in QEMU
 
@@ -59,7 +62,7 @@ qemu-system-x86_64 \
     -m 4G \
     -smp 4 \
     -cpu host \
-    -drive file=build/output/axon-os-$(date +%Y%m%d).iso,format=raw,if=virtio \
+    -drive file=dist/axon-os-0.1.0-amd64.iso,format=raw,if=virtio \
     -bios /usr/share/ovmf/OVMF.fd \
     -vga virtio \
     -display gtk,gl=on \
@@ -79,7 +82,7 @@ qemu-system-x86_64 \
     -smp 4 \
     -cpu host \
     -drive file=axon-test.qcow2,format=qcow2,if=virtio \
-    -cdrom build/output/axon-os-$(date +%Y%m%d).iso \
+    -cdrom dist/axon-os-0.1.0-amd64.iso \
     -bios /usr/share/ovmf/OVMF.fd \
     -vga virtio \
     -display gtk,gl=on \

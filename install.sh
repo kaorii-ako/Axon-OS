@@ -34,8 +34,8 @@ step()    { printf "\n${BOLD}${CYAN}══▶  %s${RESET}\n" "$*"; }
 printf "${CYAN}"
 cat <<'BANNER'
 ╔═══════════════════════════════════════╗
-║          ⬡  AXON  OS  v0.1           ║
-║   AI-Native Linux Desktop             ║
+║          ⬡  AXON  OS  v0.1            ║
+║        AI-Native Linux Desktop        ║
 ╚═══════════════════════════════════════╝
 BANNER
 printf "${RESET}\n"
@@ -60,12 +60,23 @@ fi
 PYVER="$(python3 -c 'import sys; print(".".join(map(str, sys.version_info[:3])))')"
 success "Python ${PYVER} found"
 
-# Ubuntu
-if ! grep -q 'ID=ubuntu' /etc/os-release 2>/dev/null; then
-    error "Axon OS requires Ubuntu. This system does not appear to be Ubuntu."
+# Ubuntu or Ubuntu-based distro (Zorin, Pop!_OS, Mint, etc.)
+if [[ -r /etc/os-release ]]; then
+    # shellcheck source=/dev/null
+    source /etc/os-release
+else
+    error "Cannot read /etc/os-release — unable to detect the distribution."
     exit 1
 fi
-success "Ubuntu detected"
+
+if [[ "${ID:-}" == "ubuntu" ]]; then
+    success "Ubuntu detected"
+elif [[ "${ID_LIKE:-}" == *"ubuntu"* ]]; then
+    warn "Detected ${NAME:-unknown} (Ubuntu-based). Proceeding, but Ubuntu 24.04 is the officially supported base."
+else
+    error "Axon OS requires Ubuntu or an Ubuntu-based distribution."
+    exit 1
+fi
 
 # GNOME available
 if [[ -z "${GNOME_SHELL_SESSION_MODE:-}" ]] && ! command -v gnome-shell &>/dev/null; then

@@ -13,7 +13,7 @@ import re
 import sys
 import threading
 from pathlib import Path
-from typing import Optional, Iterator, Any
+from typing import Any, Iterator, Optional
 
 import gi
 
@@ -32,8 +32,8 @@ if _intent_bar_path not in sys.path:
 try:
     from ollama_client import OllamaClient  # type: ignore[import]
 except ImportError:
-    import urllib.request
     import urllib.error
+    import urllib.request
 
     class OllamaClient:  # type: ignore[no-redef]
         """Minimal Ollama client used when intent-bar's module is absent."""
@@ -67,9 +67,6 @@ except ImportError:
             system: str = "",
         ) -> Iterator[str]:
             """Yield text chunks from the Ollama /api/chat endpoint."""
-            # Extract the latest user content as prompt fallback
-            prompt = messages[-1].get("content", "") if messages else ""
-
             payload: dict[str, Any] = {
                 "model": self.model,
                 "messages": messages,

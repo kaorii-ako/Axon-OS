@@ -1,0 +1,4 @@
+# Axon OS — shellcheck configuration
+# SC2059: printf with color-variable format strings is used intentionally in install.sh
+# SC2016: single-quoted dpkg-query/format strings are intentional (no shell expansion wanted)
+disable=SC2059,SC2016

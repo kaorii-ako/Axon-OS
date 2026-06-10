@@ -1,14 +1,15 @@
 #!/usr/bin/env python3
 """Axon Files — Directory crawler, content parser, DBus embedding fetcher, and SQLite database manager."""
 
-import os
-import sqlite3
 import json
 import math
-from pathlib import Path
+import os
+import sqlite3
 from datetime import datetime
+from pathlib import Path
 
 import dbus
+
 try:
     import dbus.mainloop.glib
     dbus.mainloop.glib.threads_init()

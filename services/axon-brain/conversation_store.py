@@ -1,7 +1,8 @@
 import os
 import sqlite3
-from datetime import datetime
 import uuid
+from datetime import datetime
+
 
 class ConversationStore:
     def __init__(self, db_path=None):

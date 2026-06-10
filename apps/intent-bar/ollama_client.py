@@ -4,10 +4,10 @@ from __future__ import annotations
 
 import json
 import queue
-import dbus
 from collections.abc import Iterator
 from typing import Any
 
+import dbus
 from dbus.mainloop.glib import DBusGMainLoop
 
 _ERROR_NOT_RUNNING: str = "[error] Axon Brain service is not reachable."
@@ -130,7 +130,7 @@ class OllamaClient:
         try:
             brain = self._get_brain()
             return str(brain.CreateConversation(system_prompt, title))
-        except Exception as e:
+        except Exception:
             import uuid
             return str(uuid.uuid4())
 

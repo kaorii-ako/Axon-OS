@@ -9,7 +9,7 @@ The operating system is built around two centralized D-Bus services — **Axon B
 
 ## Screenshots
 
-> Screenshots coming soon. ISO build and desktop preview images will be added here once the first release candidate is available.
+![Axon OS desktop preview](screenshots/desktop-preview.png)
 
 ## Features
 
@@ -27,7 +27,7 @@ The operating system is built around two centralized D-Bus services — **Axon B
 
 ### From ISO (recommended)
 
-1. Download the latest `.iso` from the [Releases](https://github.com/kaorii-ako/Axon-OS/releases) page.
+1. Download the latest `.iso` from the [Releases](https://github.com/kaorii-ako/Axon-OS/releases) page, or grab a fresh build from the latest [Build ISO workflow run](https://github.com/kaorii-ako/Axon-OS/actions/workflows/build-iso.yml) (Artifacts → `axon-os-iso`).
 2. Flash to a USB drive (replace `/dev/sdX` with your device):
    ```bash
    sudo dd if=axon-os.iso of=/dev/sdX bs=4M status=progress oflag=sync
