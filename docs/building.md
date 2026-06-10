@@ -40,6 +40,14 @@ The script will:
 
 The finished ISO is written to `dist/axon-os-<version>-amd64.iso` with a `.sha256` checksum alongside.
 
+If you want to upload the ISO to GitHub automatically from a local build, use the helper script:
+
+```bash
+./scripts/upload-iso.sh [release-tag]
+```
+
+If no tag is supplied, the script infers one from the ISO filename or the current git tag.
+
 Useful flags / environment:
 
 | Option | Effect |
