@@ -12,12 +12,15 @@ import json
 import subprocess
 from dataclasses import dataclass, field
 
+
 # ---------------------------------------------------------------------------
 # Data classes
 # ---------------------------------------------------------------------------
 
 @dataclass
+        
 class PartitionInfo:
+    num:    int
     name:   str
     size:   str
     fstype: str | None = None
@@ -76,10 +79,19 @@ class Partitioner:
                 continue
 
             partitions: list[PartitionInfo] = []
-            for child in device.get("children", []):
+            for i, child in enumerate(device.get("children", [])):
+                # Deduce partition number from name (e.g. sda1 -> 1, nvme0n1p2 -> 2)
+                p_name = child.get("name", "")
+                p_num = i + 1
+                for char in reversed(p_name):
+                    if char.isdigit():
+                        p_num = int(char)
+                        break
+                
                 partitions.append(
                     PartitionInfo(
-                        name=child.get("name", ""),
+                        num=p_num,
+                        name=f"/dev/{p_name}",
                         size=child.get("size", ""),
                         fstype=child.get("fstype"),
                     )
@@ -95,6 +107,41 @@ class Partitioner:
             )
 
         return disks
+
+    def get_partition_map(self, device: str) -> list[dict]:
+        """Returns detailed partition map with start/end in MiB."""
+        try:
+            if self.dry_run:
+                # Return dummy partition map for dry run
+                return [
+                    {"num": 1, "start": 1.0, "end": 513.0, "size": 512.0, "fstype": "vfat", "name": "EFI"},
+                    {"num": 2, "start": 513.0, "end": 102400.0, "size": 101887.0, "fstype": "ext4", "name": "root"}
+                ]
+            result = self._run(["parted", "-m", device, "unit", "MiB", "print"])
+            lines = result.stdout.strip().split('\n')
+            partitions = []
+            for line in lines:
+                if not line or line.startswith("BYT;") or line.startswith("/dev/"):
+                    continue
+                parts = line.split(':')
+                if len(parts) >= 6:
+                    num = int(parts[0])
+                    start = float(parts[1].replace("MiB", ""))
+                    end = float(parts[2].replace("MiB", ""))
+                    size = float(parts[3].replace("MiB", ""))
+                    fstype = parts[4]
+                    name = parts[5]
+                    partitions.append({
+                        "num": num,
+                        "start": start,
+                        "end": end,
+                        "size": size,
+                        "fstype": fstype,
+                        "name": name
+                    })
+            return partitions
+        except Exception:
+            return []
 
     def partition_disk(self, device: str, mode: str = "erase") -> bool:
         """Partition *device* using the given *mode*.
@@ -113,6 +160,57 @@ class Partitioner:
         except subprocess.CalledProcessError as exc:
             print(f"Partitioning failed: {exc.stderr}")
             return False
+
+    def partition_alongside(self, device: str, partition_num: int, shrink_size_gb: int) -> int | None:
+        """Shrinks partition_num by shrink_size_gb and creates a new root partition in the freed space.
+        
+        Returns the partition number of the newly created root partition on success, or None on failure.
+        """
+        try:
+            pmap = self.get_partition_map(device)
+            target = next((p for p in pmap if p["num"] == partition_num), None)
+            if not target:
+                print(f"Partition {partition_num} not found on {device}")
+                return None
+            
+            # Calculate new size in MiB
+            shrink_size_mib = shrink_size_gb * 1024
+            original_size_mib = target["size"]
+            new_size_mib = original_size_mib - shrink_size_mib
+            if new_size_mib < 10240: # Leave at least 10 GB
+                print(f"Cannot shrink partition {partition_num} below 10GB")
+                return None
+                
+            # Resolve partition device path (e.g. /dev/sda2 or /dev/nvme0n1p2)
+            part_suffix = f"p{partition_num}" if device[-1].isdigit() else f"{partition_num}"
+            part_path = f"{device}{part_suffix}"
+            
+            # Step 1: Shrink filesystem first
+            if target["fstype"] in ("ext4", "ext3"):
+                self._run(["e2fsck", "-f", "-y", part_path])
+                self._run(["resize2fs", part_path, f"{int(new_size_mib)}M"])
+            elif target["fstype"] in ("ntfs", "fuseblk"):
+                self._run(["ntfsresize", "-y", "--size", f"{int(new_size_mib)}M", part_path])
+            else:
+                print(f"Unsupported filesystem type: {target['fstype']}")
+                return None
+                
+            # Step 2: Shrink the partition itself
+            new_end_mib = target["start"] + new_size_mib
+            self._run(["parted", "-s", device, "resizepart", str(partition_num), f"{new_end_mib}MiB"])
+            
+            # Step 3: Create new root partition in the freed space
+            # Start from the new end of the shrunk partition, end at 100% of the disk
+            self._run(["parted", "-s", device, "mkpart", "root", "ext4", f"{new_end_mib}MiB", "100%"])
+            
+            # Find new partition number (typically pmap count + 1)
+            # Fetch the updated partition map to confirm number
+            updated_map = self.get_partition_map(device)
+            new_part = max(p["num"] for p in updated_map) if updated_map else partition_num + 1
+            return new_part
+        except Exception as e:
+            print(f"Partition alongside failed: {e}")
+            return None
 
     def create_partitions(self, device: str) -> None:
         """Write a GPT label and two partitions onto *device*.
@@ -152,6 +250,11 @@ class Partitioner:
         # Root — ext4  (-F forces even if already formatted)
         self._run(["mkfs.ext4", "-F", root_part])
 
+    def format_partitions_alongside(self, device: str, root_partition_num: int) -> None:
+        """Format only the newly created alongside root partition."""
+        root_part = f"{device}p{root_partition_num}" if device[-1].isdigit() else f"{device}{root_partition_num}"
+        self._run(["mkfs.ext4", "-F", root_part])
+
     def mount_partitions(self, device: str, mount_point: str) -> None:
         """Mount root then EFI under *mount_point*.
 
@@ -164,6 +267,19 @@ class Partitioner:
         self._run(["mount", root_part, mount_point])
 
         # Create EFI mount point and mount
+        efi_mount = f"{mount_point}/boot/efi"
+        self._run(["mkdir", "-p", efi_mount])
+        self._run(["mount", efi_part, efi_mount])
+
+    def mount_partitions_alongside(self, device: str, efi_partition_num: int, root_partition_num: int, mount_point: str) -> None:
+        """Mount root partition and existing EFI partition for dual-boot environment."""
+        efi_part  = f"{device}p{efi_partition_num}" if device[-1].isdigit() else f"{device}{efi_partition_num}"
+        root_part = f"{device}p{root_partition_num}" if device[-1].isdigit() else f"{device}{root_partition_num}"
+
+        # Mount root partition
+        self._run(["mount", root_part, mount_point])
+
+        # Mount existing EFI partition
         efi_mount = f"{mount_point}/boot/efi"
         self._run(["mkdir", "-p", efi_mount])
         self._run(["mount", efi_part, efi_mount])

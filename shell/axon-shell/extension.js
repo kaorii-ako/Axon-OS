@@ -37,12 +37,12 @@ class AxonAIIndicator extends PanelMenu.Button {
         this._pollTimerId = null;
         this._proxy = null;
 
-        // Build UI: "⬡ AI" label + status dot
         const box = new St.BoxLayout({
             style_class: 'axon-ai-indicator',
             vertical: false,
             x_align: Clutter.ActorAlign.CENTER,
             y_align: Clutter.ActorAlign.CENTER,
+            style: 'margin: 0 10px;',
         });
 
         this._iconLabel = new St.Label({
@@ -62,7 +62,7 @@ class AxonAIIndicator extends PanelMenu.Button {
             style_class: 'axon-ai-indicator-dot',
             text: '●',
             y_align: Clutter.ActorAlign.CENTER,
-            style: 'color: #ef4444; font-size: 10px;', // default: red (unreachable)
+            style: 'color: #ef4444; font-size: 10px;',
         });
 
         box.add_child(this._iconLabel);
@@ -81,7 +81,6 @@ class AxonAIIndicator extends PanelMenu.Button {
 
         this._checkBrainStatus();
 
-        // Poll every 30 seconds
         this._pollTimerId = GLib.timeout_add_seconds(
             GLib.PRIORITY_DEFAULT,
             30,
@@ -153,6 +152,7 @@ export default class AxonShellExtension extends Extension {
         this._keybindingIds = [];
         this._contextProxy  = null;
         this._focusWindowId = null;
+        this._overlayKeyId  = null;
     }
 
     enable() {
@@ -166,10 +166,14 @@ export default class AxonShellExtension extends Extension {
             console.warn('AxonShell: could not create ContextProxy in extension.js:', e.message);
         }
 
+        // Hide default GNOME Top Panel for a Windows layout
+        if (Main.panel) {
+            Main.panel.hide();
+        }
+
         this._spacesManager = new SpacesManager(this);
         this._spacesManager.enable();
 
-        // IntentBar must be created before DockManager (dock holds a reference)
         this._intentBar = new IntentBar(this, this._spacesManager);
         this._intentBar.enable();
 
@@ -177,9 +181,22 @@ export default class AxonShellExtension extends Extension {
         this._dockManager.enable();
 
         this._aiIndicator = new AxonAIIndicator(this);
-        Main.panel.addToStatusArea('axon-ai-indicator', this._aiIndicator, 0, 'right');
+        // Put AI indicator on the taskbar right box instead
+        if (this._dockManager && this._dockManager._actor) {
+            const rightBox = this._dockManager._actor.get_children().find(c => c.style_class === 'axon-taskbar-right');
+            if (rightBox) {
+                rightBox.insert_child_at_index(this._aiIndicator, 0);
+            }
+        }
 
         this._registerKeybindings();
+
+        // 1. Intercept the Super / Windows Key press to toggle Start Menu
+        this._overlayKeyId = global.display.connect('overlay-key', () => {
+            if (this._dockManager && this._dockManager._startMenuPopup) {
+                this._dockManager._startMenuPopup.toggle();
+            }
+        });
 
         // Listen for focused window changes
         this._focusWindowId = global.display.connect('notify::focus-window', () => {
@@ -275,7 +292,17 @@ export default class AxonShellExtension extends Extension {
     }
 
     disable() {
-        // Remove all registered keybindings
+        // Remove Super key overlay listener
+        if (this._overlayKeyId) {
+            global.display.disconnect(this._overlayKeyId);
+            this._overlayKeyId = null;
+        }
+
+        // Restore default GNOME Top Panel
+        if (Main.panel) {
+            Main.panel.show();
+        }
+
         for (const id of this._keybindingIds) {
             try {
                 Main.wm.removeKeybinding(id);
@@ -295,7 +322,6 @@ export default class AxonShellExtension extends Extension {
             this._aiIndicator = null;
         }
 
-        // Dock before IntentBar (dock holds a ref to intentBar)
         if (this._dockManager) {
             this._dockManager.disable();
             this._dockManager = null;

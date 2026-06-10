@@ -118,10 +118,16 @@ if command -v ollama &>/dev/null; then
     fi
 fi
 
-# 7. Launch welcome app
-if [[ -f "${APPS_DEST}/axon-welcome/main.py" ]]; then
-    echo "[axon-firstboot] Launching Axon Onboarding wizard..."
-    python3 "${APPS_DEST}/axon-welcome/main.py" &
+# 7. Launch welcome app or installer
+if [[ "${USER}" == "axon" ]]; then
+    echo "[axon-firstboot] Running in Live ISO environment. Launching Installer..."
+    # Run in background to let firstboot.sh exit clean
+    (pkexec python3 /usr/lib/axon/installer/axon-installer.py || sudo -E python3 /usr/lib/axon/installer/axon-installer.py) &
+else
+    if [[ -f "${APPS_DEST}/axon-welcome/main.py" ]]; then
+        echo "[axon-firstboot] Launching Axon Onboarding wizard..."
+        python3 "${APPS_DEST}/axon-welcome/main.py" &
+    fi
 fi
 
 # Mark first-boot complete

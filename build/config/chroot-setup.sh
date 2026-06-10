@@ -10,7 +10,7 @@ export LC_ALL=C
 export HOME=/root
 
 SRC="/opt/axon-src"
-VERSION="${AXON_VERSION:-0.1.0}"
+VERSION="${AXON_VERSION:-0.2.0}"
 CODENAME="Pulse"
 
 log() { echo "[chroot-setup] $*"; }
@@ -86,12 +86,14 @@ AXON_LIB="/usr/lib/axon"
 APPS_DIR="${AXON_LIB}/apps"
 SERVICES_DIR="${AXON_LIB}/services"
 
-mkdir -p "${AXON_LIB}"
-cp -r "${SRC}/apps" "${APPS_DIR}"
-cp -r "${SRC}/services" "${SERVICES_DIR}"
-cp -r "${SRC}/shell" "${AXON_LIB}/shell"
-mkdir -p "${AXON_LIB}/data"
-cp -r "${SRC}/data/applications" "${AXON_LIB}/data/applications"
+mkdir -p "${APPS_DIR}"
+mkdir -p "${SERVICES_DIR}"
+mkdir -p "${AXON_LIB}/shell"
+mkdir -p "${AXON_LIB}/data/applications"
+cp -r "${SRC}/apps/." "${APPS_DIR}/"
+cp -r "${SRC}/services/." "${SERVICES_DIR}/"
+cp -r "${SRC}/shell/." "${AXON_LIB}/shell/"
+cp -r "${SRC}/data/applications/." "${AXON_LIB}/data/applications/"
 find "${AXON_LIB}" -name '__pycache__' -type d -exec rm -rf {} + 2>/dev/null || true
 
 # Desktop entries -> /usr/share/applications (resolve AXON_APPS_DIR)
@@ -178,9 +180,14 @@ picture-uri='file:///usr/share/backgrounds/axon/axon-aurora.png'
 [org.gnome.desktop.wm.preferences]
 num-workspaces=9
 workspace-names=['Code', 'Web', 'Chat', 'Files', 'Media', 'Work', 'Personal', 'Terminal', 'Notes']
+button-layout=':minimize,maximize,close'
 
 [org.gnome.mutter]
 dynamic-workspaces=false
+edge-tiling=true
+
+[org.gnome.desktop.peripherals.touchpad]
+tap-to-click=true
 
 [org.gnome.shell]
 enabled-extensions=['axon-shell@axon-os']

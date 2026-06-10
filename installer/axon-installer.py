@@ -3,9 +3,9 @@
 axon-installer.py — GTK4 / libadwaita wizard installer for Axon OS.
 
 Pages:
-  1. WelcomePage   — branding + "Let's go" prompt
+  1. WelcomePage   — branding + Try/Install options
   2. UserSetupPage — username / password / hostname
-  3. DiskPage      — list available disks, pick target
+  3. DiskPage      — choose target disk + partitioning type (Erase/Alongside)
   4. ProgressPage  — live progress bar during installation
 """
 
@@ -54,7 +54,7 @@ def _entry(placeholder: str, secret: bool = False) -> Gtk.Entry:
 # ---------------------------------------------------------------------------
 
 class WelcomePage(Gtk.Box):
-    def __init__(self) -> None:
+    def __init__(self, on_try: callable, on_install: callable) -> None:
         super().__init__(orientation=Gtk.Orientation.VERTICAL, spacing=24)
         self.set_valign(Gtk.Align.CENTER)
         self.set_halign(Gtk.Align.CENTER)
@@ -73,11 +73,31 @@ class WelcomePage(Gtk.Box):
 
         subtitle = _label(
             "A minimal, AI-native desktop built on GNOME.\n"
-            "This wizard will guide you through installation.",
+            "Try it out risk-free in live preview mode, or install it to your drive.",
             justify=Gtk.Justification.CENTER,
         )
         subtitle.set_halign(Gtk.Align.CENTER)
         self.append(subtitle)
+
+        # Action Buttons
+        btn_box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=16)
+        btn_box.set_halign(Gtk.Align.CENTER)
+        btn_box.set_margin_top(16)
+
+        self.try_btn = Gtk.Button(label="Try Axon OS (Live Mode)")
+        self.try_btn.add_css_class("pill")
+        self.try_btn.set_size_request(200, 48)
+        self.try_btn.connect("clicked", lambda _b: on_try())
+
+        self.install_btn = Gtk.Button(label="Install Axon OS")
+        self.install_btn.add_css_class("suggested-action")
+        self.install_btn.add_css_class("pill")
+        self.install_btn.set_size_request(200, 48)
+        self.install_btn.connect("clicked", lambda _b: on_install())
+
+        btn_box.append(self.try_btn)
+        btn_box.append(self.install_btn)
+        self.append(btn_box)
 
 
 class UserSetupPage(Gtk.Box):
@@ -172,23 +192,53 @@ class DiskPage(Gtk.Box):
 
         self.append(_label("<span size='x-large' weight='bold'>Choose Installation Disk</span>",
                            use_markup=True))
-        self.append(_label(
-            "All data on the selected disk will be erased.",
-            css_classes=["warning"],
-        ))
 
         scroll = Gtk.ScrolledWindow()
-        scroll.set_vexpand(True)
+        scroll.set_size_request(-1, 120)
         scroll.set_policy(Gtk.PolicyType.NEVER, Gtk.PolicyType.AUTOMATIC)
 
         self.listbox = Gtk.ListBox()
         self.listbox.set_selection_mode(Gtk.SelectionMode.SINGLE)
         self.listbox.add_css_class("boxed-list")
+        self.listbox.connect("row-selected", self._on_disk_selected)
 
         self._populate()
 
         scroll.set_child(self.listbox)
         self.append(scroll)
+
+        # Partitioning Options
+        self.append(_label("<span weight='bold'>Partitioning Options</span>", use_markup=True))
+        
+        self.erase_radio = Gtk.CheckButton(label="Erase entire disk and install Axon OS")
+        self.erase_radio.set_active(True)
+        self.erase_radio.connect("toggled", self._on_type_toggled)
+        self.append(self.erase_radio)
+
+        self.alongside_radio = Gtk.CheckButton(label="Install alongside existing operating system (Dual Boot)")
+        self.alongside_radio.set_group(self.erase_radio)
+        self.append(self.alongside_radio)
+
+        # Alongside details box
+        self.alongside_box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=10)
+        self.alongside_box.set_margin_start(24)
+        self.alongside_box.set_sensitive(False)
+
+        part_box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=8)
+        part_box.append(Gtk.Label(label="Target Partition to shrink:"))
+        self.part_combo = Gtk.ComboBoxText()
+        part_box.append(self.part_combo)
+        self.alongside_box.append(part_box)
+
+        slider_box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=8)
+        slider_box.append(Gtk.Label(label="Space to allocate for Axon OS (GB):"))
+        self.shrink_slider = Gtk.Scale.new_with_range(Gtk.Orientation.HORIZONTAL, 10, 100, 1)
+        self.shrink_slider.set_value(30)
+        self.shrink_slider.set_hexpand(True)
+        slider_box.append(self.shrink_slider)
+        self.alongside_box.append(slider_box)
+
+        self.append(self.alongside_box)
 
     def _populate(self) -> None:
         if Partitioner is None:
@@ -219,11 +269,50 @@ class DiskPage(Gtk.Box):
         if first:
             self.listbox.select_row(first)
 
+    def _on_type_toggled(self, _btn) -> None:
+        self.alongside_box.set_sensitive(self.alongside_radio.get_active())
+
+    def _on_disk_selected(self, _listbox, row) -> None:
+        self.part_combo.remove_all()
+        disk_info = self.get_selected_disk()
+        if not disk_info:
+            return
+            
+        resizable_count = 0
+        for p in disk_info.partitions:
+            if p.fstype in ("ext4", "ext3", "ntfs", "fuseblk"):
+                label = f"Partition {p.num} ({p.fstype}) — {p.size}"
+                self.part_combo.append(str(p.num), label)
+                resizable_count += 1
+                
+        if resizable_count > 0:
+            self.part_combo.set_active(0)
+            self.alongside_radio.set_sensitive(True)
+        else:
+            self.alongside_radio.set_sensitive(False)
+            self.erase_radio.set_active(True)
+
     def get_selected_disk(self) -> "DiskInfo | None":
         row = self.listbox.get_selected_row()
         if isinstance(row, DiskRow):
             return row.disk
         return None
+
+    def get_installation_settings(self) -> dict:
+        is_alongside = self.alongside_radio.get_active()
+        if is_alongside:
+            part_num_str = self.part_combo.get_active_id()
+            part_num = int(part_num_str) if part_num_str else None
+            shrink_val = int(self.shrink_slider.get_value())
+            return {
+                "mode": "alongside",
+                "partition_num": part_num,
+                "shrink_size_gb": shrink_val
+            }
+        else:
+            return {
+                "mode": "erase"
+            }
 
 
 class ProgressPage(Gtk.Box):
@@ -269,11 +358,14 @@ PAGE_ORDER = [PAGE_WELCOME, PAGE_USER, PAGE_DISK, PAGE_PROGRESS]
 class InstallerApp(Adw.ApplicationWindow):
     def __init__(self, app: Adw.Application) -> None:
         super().__init__(application=app, title="Axon OS Installer")
-        self.set_default_size(700, 520)
+        self.set_default_size(700, 560)
         self.set_resizable(False)
 
         # Pages
-        self._welcome_page  = WelcomePage()
+        self._welcome_page  = WelcomePage(
+            on_try=self._on_try_clicked,
+            on_install=self._on_install_clicked
+        )
         self._user_page     = UserSetupPage()
         self._disk_page     = DiskPage()
         self._progress_page = ProgressPage()
@@ -303,6 +395,8 @@ class InstallerApp(Adw.ApplicationWindow):
         btn_box.append(self._back_btn)
         btn_box.append(self._next_btn)
 
+        self.btn_box = btn_box # Store reference
+
         root = Gtk.Box(orientation=Gtk.Orientation.VERTICAL)
         root.append(self._stack)
         root.append(btn_box)
@@ -318,17 +412,31 @@ class InstallerApp(Adw.ApplicationWindow):
     def _update_nav(self) -> None:
         page_name = PAGE_ORDER[self._current_index]
         self._stack.set_visible_child_name(page_name)
-        self._back_btn.set_sensitive(self._current_index > 0)
 
-        if page_name == PAGE_DISK:
-            self._next_btn.set_label("Install")
-        elif page_name == PAGE_PROGRESS:
-            self._next_btn.set_visible(False)
-            self._back_btn.set_visible(False)
+        if page_name == PAGE_WELCOME:
+            self.btn_box.set_visible(False)
         else:
-            self._next_btn.set_label("Next")
-            self._next_btn.set_visible(True)
-            self._back_btn.set_visible(True)
+            self.btn_box.set_visible(True)
+            self._back_btn.set_sensitive(self._current_index > 1) # Block backing into Welcome page
+
+            if page_name == PAGE_DISK:
+                self._next_btn.set_label("Install")
+            elif page_name == PAGE_PROGRESS:
+                self._next_btn.set_visible(False)
+                self._back_btn.set_visible(False)
+            else:
+                self._next_btn.set_label("Next")
+                self._next_btn.set_visible(True)
+                self._back_btn.set_visible(True)
+
+    def _on_try_clicked(self) -> None:
+        print("Live Preview Mode triggered.")
+        self.get_application().quit()
+
+    def _on_install_clicked(self) -> None:
+        self._stack.set_transition_type(Gtk.StackTransitionType.SLIDE_LEFT)
+        self._current_index = PAGE_ORDER.index(PAGE_USER)
+        self._update_nav()
 
     def _on_back(self, _btn: Gtk.Button) -> None:
         if self._current_index > 0:
@@ -379,10 +487,11 @@ class InstallerApp(Adw.ApplicationWindow):
     def _start_install(self) -> None:
         user_info = self._user_page.get_values()
         disk      = self._disk_page.get_selected_disk()
+        disk_settings = self._disk_page.get_installation_settings()
 
         thread = threading.Thread(
             target=self._install_worker,
-            args=(disk, user_info),
+            args=(disk, disk_settings, user_info),
             daemon=True,
         )
         thread.start()
@@ -394,32 +503,171 @@ class InstallerApp(Adw.ApplicationWindow):
     def _install_worker(
         self,
         disk: "DiskInfo | None",
+        disk_settings: dict,
         user_info: dict[str, str],
     ) -> None:
         try:
-            part = Partitioner(dry_run=(Partitioner is None))
+            if Partitioner is None:
+                class MockPartitioner:
+                    def __init__(self, dry_run=True):
+                        self.dry_run = True
+                    def list_disks(self): return []
+                    def get_partition_map(self, dev): return []
+                    def partition_disk(self, dev, mode): return True
+                    def partition_alongside(self, dev, pnum, sz): return 3
+                    def format_partitions(self, dev): pass
+                    def format_partitions_alongside(self, dev, rnum): pass
+                    def mount_partitions(self, dev, mnt): pass
+                    def mount_partitions_alongside(self, dev, enum, rnum, mnt): pass
+                part = MockPartitioner()
+            else:
+                part = Partitioner(dry_run=False)
+
             device = disk.device if disk else "/dev/sda"
             mount  = "/mnt/axon"
+            mode   = disk_settings["mode"]
 
-            self._set_progress(0.05, "Partitioning disk…")
-            part.partition_disk(device, mode="erase")
+            if mode == "erase":
+                self._set_progress(0.05, "Partitioning disk…")
+                part.partition_disk(device, mode="erase")
 
-            self._set_progress(0.20, "Formatting partitions…")
-            part.format_partitions(device)
+                self._set_progress(0.20, "Formatting partitions…")
+                part.format_partitions(device)
 
-            self._set_progress(0.35, "Mounting filesystems…")
-            part.mount_partitions(device, mount)
+                self._set_progress(0.35, "Mounting filesystems…")
+                part.mount_partitions(device, mount)
+                
+                root_device = f"{device}p2" if device[-1].isdigit() else f"{device}2"
+                efi_device = f"{device}p1" if device[-1].isdigit() else f"{device}1"
+            else:
+                part_num = disk_settings["partition_num"]
+                shrink_gb = disk_settings["shrink_size_gb"]
+                
+                self._set_progress(0.05, f"Shrinking partition {part_num} by {shrink_gb} GB…")
+                new_root_num = part.partition_alongside(device, part_num, shrink_gb)
+                if not new_root_num:
+                    raise RuntimeError("Failed to partition alongside existing operating system.")
+
+                self._set_progress(0.20, "Formatting alongside root partition…")
+                part.format_partitions_alongside(device, new_root_num)
+
+                self._set_progress(0.35, "Mounting partitions (reusing EFI)…")
+                
+                # Fetch EFI partition index (e.g. fat/vfat formatted partition on disk)
+                pmap = part.get_partition_map(device)
+                efi_num = 1
+                for p in pmap:
+                    if p.get("fstype") in ("vfat", "fat32", "fat16"):
+                        efi_num = p["num"]
+                        break
+                part.mount_partitions_alongside(device, efi_num, new_root_num, mount)
+                
+                root_device = f"{device}p{new_root_num}" if device[-1].isdigit() else f"{device}{new_root_num}"
+                efi_device = f"{device}p{efi_num}" if device[-1].isdigit() else f"{device}{efi_num}"
+
+            import os
+            import subprocess
+            import crypt
+
+            def get_uuid(dev_path):
+                try:
+                    res = subprocess.run(["blkid", "-o", "value", "-s", "UUID", dev_path], capture_output=True, text=True, check=True)
+                    return res.stdout.strip()
+                except Exception:
+                    return None
 
             self._set_progress(0.50, "Installing base system…")
-            # (rsync / debootstrap / unsquashfs would go here)
+            if not part.dry_run:
+                # Copy from /rofs if it exists, otherwise copy from / with exclusions
+                if os.path.exists("/rofs"):
+                    subprocess.run(["rsync", "-aHAXS", "/rofs/", mount + "/"], check=True)
+                else:
+                    subprocess.run([
+                        "rsync", "-aHAXS",
+                        "--exclude=/proc/*", "--exclude=/sys/*", "--exclude=/dev/*",
+                        "--exclude=/run/*", "--exclude=/tmp/*", "--exclude=/mnt/*",
+                        "--exclude=/media/*", "--exclude=/lost+found", "--exclude=/cdrom/*",
+                        "/", mount + "/"
+                    ], check=True)
 
             self._set_progress(0.75, "Configuring system…")
-            # (locale, hostname, user creation would go here)
+            if not part.dry_run:
+                root_uuid = get_uuid(root_device)
+                efi_uuid = get_uuid(efi_device)
 
-            self._set_progress(0.90, "Installing bootloader…")
-            # (grub-install would go here)
+                # Write fstab
+                fstab_content = ""
+                if root_uuid:
+                    fstab_content += f"UUID={root_uuid} / ext4 defaults,noatime 0 1\n"
+                else:
+                    fstab_content += f"{root_device} / ext4 defaults,noatime 0 1\n"
+                if efi_uuid:
+                    fstab_content += f"UUID={efi_uuid} /boot/efi vfat defaults 0 2\n"
+                else:
+                    fstab_content += f"{efi_device} /boot/efi vfat defaults 0 2\n"
+
+                os.makedirs(os.path.join(mount, "etc"), exist_ok=True)
+                with open(os.path.join(mount, "etc", "fstab"), "w") as f:
+                    f.write(fstab_content)
+
+                # Write hostname
+                hostname = user_info.get("hostname", "axon-os")
+                with open(os.path.join(mount, "etc", "hostname"), "w") as f:
+                    f.write(hostname + "\n")
+
+                # Write hosts
+                hosts_content = f"127.0.0.1\tlocalhost\n127.0.1.1\t{hostname}\n\n::1\t\tip6-localhost ip6-loopback\nfe00::0\t\tip6-localnet\nff00::0\t\tip6-mcastprefix\nff02::1\t\tip6-allnodes\nff02::2\t\tip6-allrouters\n"
+                with open(os.path.join(mount, "etc", "hosts"), "w") as f:
+                    f.write(hosts_content)
+
+                # Create user with password
+                username = user_info["username"]
+                password = user_info["password"]
+                hashed_password = crypt.crypt(password, crypt.METHOD_SHA512)
+
+                subprocess.run(["chroot", mount, "useradd", "-m", "-s", "/bin/bash", "-p", hashed_password, username], check=True)
+                subprocess.run(["chroot", mount, "usermod", "-aG", "sudo,adm,cdrom,dip,plugdev", username], check=True)
+                subprocess.run(["chroot", mount, "chown", "-R", f"{username}:{username}", f"/home/{username}"], check=True)
+
+            self._set_progress(0.90, "Installing bootloader (configuring dual boot GRUB)…")
+            if not part.dry_run:
+                # Mount bind virtual filesystems
+                subprocess.run(["mount", "--bind", "/dev", os.path.join(mount, "dev")], check=True)
+                subprocess.run(["mount", "--bind", "/proc", os.path.join(mount, "proc")], check=True)
+                subprocess.run(["mount", "--bind", "/sys", os.path.join(mount, "sys")], check=True)
+                subprocess.run(["mount", "--bind", "/run", os.path.join(mount, "run")], check=True)
+                
+                efi_vars_src = "/sys/firmware/efi/efivars"
+                efi_vars_dest = os.path.join(mount, "sys/firmware/efi/efivars")
+                mount_efivars = os.path.exists(efi_vars_src)
+                if mount_efivars:
+                    subprocess.run(["mount", "--bind", efi_vars_src, efi_vars_dest], check=True)
+
+                try:
+                    # Install grub
+                    subprocess.run([
+                        "chroot", mount, "grub-install",
+                        "--target=x86_64-efi", "--efi-directory=/boot/efi",
+                        "--bootloader-id=Axon OS", "--recheck"
+                    ], check=True)
+                    
+                    # Update grub
+                    subprocess.run(["chroot", mount, "update-grub"], check=True)
+                finally:
+                    # Unmount virtual filesystems
+                    if mount_efivars:
+                        subprocess.run(["umount", "-l", efi_vars_dest], check=True)
+                    subprocess.run(["umount", "-l", os.path.join(mount, "dev")], check=True)
+                    subprocess.run(["umount", "-l", os.path.join(mount, "proc")], check=True)
+                    subprocess.run(["umount", "-l", os.path.join(mount, "sys")], check=True)
+                    subprocess.run(["umount", "-l", os.path.join(mount, "run")], check=True)
 
             self._set_progress(1.00, "Installation complete!")
+            if not part.dry_run:
+                # Clean up target mounts
+                subprocess.run(["umount", "-l", os.path.join(mount, "boot/efi")], check=True)
+                subprocess.run(["umount", "-l", mount], check=True)
+
             GLib.idle_add(self._show_done_dialog)
 
         except Exception as exc:
