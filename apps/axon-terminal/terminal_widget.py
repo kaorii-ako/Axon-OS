@@ -12,7 +12,6 @@ Provides:
 from __future__ import annotations
 
 import os
-import shlex
 from typing import Optional
 
 import gi
@@ -20,10 +19,8 @@ import gi
 gi.require_version("Gtk", "4.0")
 gi.require_version("Adw", "1")
 gi.require_version("Vte", "2.91")
-from gi.repository import Adw, Gdk, GLib, Gtk, Pango, Vte  # noqa: E402
-
 from ai_helper import AIHelper  # noqa: E402
-
+from gi.repository import Adw, Gdk, GLib, Gtk, Pango, Vte  # noqa: E402
 
 # ---------------------------------------------------------------------------
 # Colour palette

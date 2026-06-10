@@ -1,17 +1,17 @@
 #!/usr/bin/env python3
 """Axon Files — Window and layout components."""
 
-import os
 import subprocess
 import threading
 from pathlib import Path
 
 import gi
+
 gi.require_version("Gtk", "4.0")
 gi.require_version("Adw", "1")
-from gi.repository import Adw, GLib, Gtk, Gdk, Gio
-
 from file_indexer import FileIndexer, format_size, format_timestamp
+from gi.repository import Adw, Gdk, GLib, Gtk
+
 
 def load_css():
     """Loads application CSS styling."""

@@ -14,7 +14,7 @@ from __future__ import annotations
 
 import json
 import threading
-from typing import Optional, Callable
+from typing import Callable, Optional
 
 import dbus
 from gi.repository import GLib

@@ -1,5 +1,11 @@
+# Axon OS — package manifest installed into the ISO root filesystem.
+# One package per line; blank lines and "#" comments are ignored.
+# NOTE: firefox/chromium are NOT listed — on Ubuntu 24.04 they are snap
+# transition packages that cannot install inside a chroot.
+
 # ── Core GNOME desktop ────────────────────────────────────────────────────────
 gnome-shell
+gnome-session
 gnome-shell-extensions
 gnome-terminal
 gnome-tweaks
@@ -13,51 +19,73 @@ evince
 gnome-calculator
 gnome-system-monitor
 gnome-disk-utility
+gnome-keyring
+xdg-user-dirs
+xdg-user-dirs-gtk
+xdg-utils
+gvfs-fuse
+
+# ── Audio ─────────────────────────────────────────────────────────────────────
+pipewire
+pipewire-pulse
+wireplumber
+
+# ── Web browser (deb-packaged; firefox is snap-only on noble) ─────────────────
+epiphany-browser
 
 # ── Axon UI dependencies ──────────────────────────────────────────────────────
 python3
 python3-gi
+python3-gi-cairo
 python3-requests
 python3-httpx
 python3-pip
+python3-dbus
 gir1.2-gtk-4.0
 gir1.2-adw-1
-libadwaita-1-dev
-libgtk-4-dev
 
-# ── Theming ───────────────────────────────────────────────────────────────────
+# ── Theming / fonts ───────────────────────────────────────────────────────────
 papirus-icon-theme
 fonts-inter
 fonts-noto-color-emoji
 fonts-liberation
+fonts-dejavu
 
-# ── Boot / Plymouth ───────────────────────────────────────────────────────────
+# ── Boot / Plymouth / live session ────────────────────────────────────────────
 plymouth
 plymouth-themes
+plymouth-label
 grub-efi-amd64
-linux-image-generic
-live-boot
-live-config
-live-config-systemd
+grub-efi-amd64-signed
+shim-signed
+
+# ── Base system ───────────────────────────────────────────────────────────────
+sudo
+locales
+console-setup
+keyboard-configuration
+linux-firmware
+pciutils
+usbutils
 
 # ── Network ───────────────────────────────────────────────────────────────────
 network-manager
 network-manager-gnome
-firefox
+avahi-daemon
 
 # ── System utilities ──────────────────────────────────────────────────────────
 git
 curl
 wget
-build-essential
-systemd
+nano
+less
 xdotool
 wmctrl
 zenity
-yad
 dconf-editor
+dconf-cli
 htop
-neofetch
+fastfetch
 
 # ── VM guest additions (VirtualBox + VMware + QEMU/KVM) ───────────────────────
 virtualbox-guest-utils

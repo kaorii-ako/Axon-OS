@@ -8,8 +8,9 @@ D-Bus service instead of scanning /proc and system log files directly.
 from __future__ import annotations
 
 import json
+from typing import Any, Optional
+
 import dbus
-from typing import Optional, Any
 
 
 class ContextReader:

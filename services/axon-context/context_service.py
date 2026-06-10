@@ -1,15 +1,13 @@
 #!/usr/bin/env python3
-import os
-import sys
 import json
+import os
 import re
-import urllib.request
+import sys
 from pathlib import Path
-from datetime import datetime
 
 import dbus
-import dbus.service
 import dbus.mainloop.glib
+import dbus.service
 from gi.repository import GLib
 
 AXON_DIR = Path.home() / ".axon"
@@ -168,7 +166,7 @@ class ContextService(dbus.service.Object):
         if bash_history.exists():
             try:
                 lines = bash_history.read_text(errors="replace").splitlines()
-                commands = [l.strip() for l in lines if l.strip() and not l.startswith("#")]
+                commands = [line.strip() for line in lines if line.strip() and not line.startswith("#")]
                 return commands[-n:]
             except Exception:
                 pass

@@ -2,6 +2,7 @@
 """Axon OS Welcome App — entry point."""
 
 import sys
+
 import gi
 
 gi.require_version("Gtk", "4.0")

@@ -1,0 +1,8 @@
+[Plymouth Theme]
+Name=Axon
+Description=Axon OS boot splash — pulsing hexagon on violet gradient
+ModuleName=script
+
+[script]
+ImageDir=/usr/share/plymouth/themes/axon
+ScriptFile=/usr/share/plymouth/themes/axon/axon.script
