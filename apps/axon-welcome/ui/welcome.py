@@ -1,6 +1,7 @@
 """Axon OS Welcome App — WelcomeWindow (4-page onboarding wizard)."""
 
 import os
+import shutil
 import subprocess
 import sys
 import threading
@@ -503,12 +504,30 @@ class WelcomeWindow(Adw.Window):
 
         # Fire D-Bus pull request
         def _trigger_dbus_pull():
+            # No Ollama runtime yet (e.g. fresh live session/install): bootstrap
+            # it with the bundled setup script, which also pulls the model.
+            if shutil.which("ollama") is None:
+                setup = "/usr/local/bin/axon-ollama-setup"
+                if os.path.exists(setup):
+                    GLib.idle_add(self._update_pull_progress, 0, 0,
+                                  "Installing Ollama runtime (a few minutes)...")
+                    try:
+                        subprocess.run([setup, model],
+                                       stdout=subprocess.DEVNULL,
+                                       stderr=subprocess.DEVNULL,
+                                       check=True)
+                        GLib.idle_add(self._update_pull_progress, 1, 1, "success")
+                    except Exception:
+                        GLib.idle_add(self._update_pull_progress, 0, 0,
+                                      "error: Ollama install failed — check your internet connection")
+                    return
+
             if self.brain is None:
                 try:
                     self._connect_brain()
                 except Exception:
                     pass
-                    
+
             if self.brain is not None:
                 try:
                     self.brain.PullModel(model)

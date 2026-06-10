@@ -158,14 +158,69 @@ X-GNOME-Autostart-Phase=Applications
 EOF
 
 # ---------------------------------------------------------------------------
+# 5b. Networking — hand every interface to NetworkManager
+# ---------------------------------------------------------------------------
+# Ubuntu's network-manager package marks all non-wifi devices "unmanaged"
+# unless a desktop netplan config exists. debootstrap provides neither, so
+# without these two files the live system boots with no working ethernet.
+log "Configuring networking (NetworkManager manages everything)..."
+mkdir -p /etc/netplan
+cat > /etc/netplan/01-network-manager-all.yaml <<'EOF'
+# Axon OS: let NetworkManager manage all devices
+network:
+  version: 2
+  renderer: NetworkManager
+EOF
+chmod 600 /etc/netplan/01-network-manager-all.yaml
+
+# Override the package default that excludes ethernet from NM management
+mkdir -p /etc/NetworkManager/conf.d
+cat > /etc/NetworkManager/conf.d/10-globally-managed-devices.conf <<'EOF'
+[keyfile]
+unmanaged-devices=none
+EOF
+
+systemctl enable NetworkManager.service || log "WARNING: could not enable NetworkManager"
+
+# ---------------------------------------------------------------------------
 # 6. GNOME defaults (gschema overrides apply to every user, incl. live)
 # ---------------------------------------------------------------------------
+# macOS-style look: WhiteSur GTK + Shell + icon themes (built from source at
+# image-build time; falls back to the Axon dark theme if anything fails).
+log "Installing WhiteSur (macOS-style) themes..."
+apt-get install -y sassc libglib2.0-dev-bin || log "WARNING: theme build deps failed"
+GTK_THEME_NAME='axon-gtk'
+ICON_THEME_NAME='Papirus-Dark'
+SHELL_THEME_NAME=''
+if git clone --depth=1 https://github.com/vinceliuice/WhiteSur-gtk-theme.git /tmp/wsg \
+   && /tmp/wsg/install.sh -d /usr/share/themes -c Dark -t purple -N glassy; then
+    GTK_THEME_NAME='WhiteSur-Dark-purple'
+    SHELL_THEME_NAME='WhiteSur-Dark-purple'
+else
+    log "WARNING: WhiteSur GTK theme install failed — keeping axon-gtk"
+fi
+if git clone --depth=1 https://github.com/vinceliuice/WhiteSur-icon-theme.git /tmp/wsi \
+   && /tmp/wsi/install.sh -d /usr/share/icons; then
+    ICON_THEME_NAME='WhiteSur-dark'
+else
+    log "WARNING: WhiteSur icon theme install failed — keeping Papirus-Dark"
+fi
+rm -rf /tmp/wsg /tmp/wsi
+
+# The user-theme extension schema lives outside the default schema dir; copy
+# it in so the gschema override below can reference it.
+USER_THEME_EXT="user-theme@gnome-shell-extensions.gcampax.github.com"
+USER_THEME_SCHEMA="/usr/share/gnome-shell/extensions/${USER_THEME_EXT}/schemas/org.gnome.shell.extensions.user-theme.gschema.xml"
+if [[ -f "${USER_THEME_SCHEMA}" ]]; then
+    cp "${USER_THEME_SCHEMA}" /usr/share/glib-2.0/schemas/
+fi
+
 log "Applying GNOME defaults..."
-cat > /usr/share/glib-2.0/schemas/90_axon-os.gschema.override <<'EOF'
+cat > /usr/share/glib-2.0/schemas/90_axon-os.gschema.override <<EOF
 [org.gnome.desktop.interface]
 color-scheme='prefer-dark'
-gtk-theme='axon-gtk'
-icon-theme='Papirus-Dark'
+gtk-theme='${GTK_THEME_NAME}'
+icon-theme='${ICON_THEME_NAME}'
 font-name='Inter 11'
 enable-animations=true
 
@@ -180,7 +235,7 @@ picture-uri='file:///usr/share/backgrounds/axon/axon-aurora.png'
 [org.gnome.desktop.wm.preferences]
 num-workspaces=9
 workspace-names=['Code', 'Web', 'Chat', 'Files', 'Media', 'Work', 'Personal', 'Terminal', 'Notes']
-button-layout=':minimize,maximize,close'
+button-layout='close,minimize,maximize:'
 
 [org.gnome.mutter]
 dynamic-workspaces=false
@@ -190,9 +245,17 @@ edge-tiling=true
 tap-to-click=true
 
 [org.gnome.shell]
-enabled-extensions=['axon-shell@axon-os']
+enabled-extensions=['axon-shell@axon-os', '${USER_THEME_EXT}']
 favorite-apps=['axon-welcome.desktop', 'install-axon-os.desktop', 'org.gnome.Nautilus.desktop', 'org.gnome.Epiphany.desktop', 'axon-terminal.desktop', 'axon-files.desktop', 'axon-ai-panel.desktop', 'axon-settings.desktop']
 EOF
+
+if [[ -n "${SHELL_THEME_NAME}" && -f /usr/share/glib-2.0/schemas/org.gnome.shell.extensions.user-theme.gschema.xml ]]; then
+    cat >> /usr/share/glib-2.0/schemas/90_axon-os.gschema.override <<EOF
+
+[org.gnome.shell.extensions.user-theme]
+name='${SHELL_THEME_NAME}'
+EOF
+fi
 glib-compile-schemas /usr/share/glib-2.0/schemas/
 
 # ---------------------------------------------------------------------------
