@@ -6,13 +6,14 @@ import urllib.error
 import urllib.request
 import uuid
 from pathlib import Path
-from axon_logger import configure_app_logger
 
 import dbus
 import dbus.mainloop.glib
 import dbus.service
 import tomllib
 from gi.repository import GLib
+
+from axon_logger import configure_app_logger
 
 # Ensure we can import hardware_profiler and conversation_store
 sys.path.insert(0, str(Path(__file__).resolve().parent))
@@ -93,7 +94,7 @@ class BrainService(dbus.service.Object):
         for attempt in range(max_retries):
             try:
                 return urllib.request.urlopen(req, timeout=timeout)
-            except (urllib.error.URLError, OSError) as exc:
+            except (urllib.error.URLError, OSError):
                 if attempt == max_retries - 1:
                     raise
                 backoff = min(2.0 ** attempt, max_backoff)
@@ -108,7 +109,7 @@ class BrainService(dbus.service.Object):
         for attempt in range(max_retries):
             try:
                 return urllib.request.urlopen(req, timeout=timeout)
-            except (urllib.error.URLError, OSError) as exc:
+            except (urllib.error.URLError, OSError):
                 if attempt == max_retries - 1:
                     raise
                 backoff = min(2.0 ** attempt, max_backoff)

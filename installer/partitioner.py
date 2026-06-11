@@ -11,6 +11,7 @@ from __future__ import annotations
 import json
 import subprocess
 from dataclasses import dataclass, field
+
 from axon_logger import configure_app_logger
 
 # ---------------------------------------------------------------------------
@@ -267,8 +268,8 @@ class Partitioner:
         efi_part  = f"{device}p1" if device[-1].isdigit() else f"{device}1"
         root_part = f"{device}p2" if device[-1].isdigit() else f"{device}2"
 
-        import tempfile
         import os
+        import tempfile
 
         # BTRFS subvolumes: create @ and @home
         with tempfile.TemporaryDirectory() as tmp_mnt:
@@ -294,8 +295,8 @@ class Partitioner:
         efi_part  = f"{device}p{efi_partition_num}" if device[-1].isdigit() else f"{device}{efi_partition_num}"
         root_part = f"{device}p{root_partition_num}" if device[-1].isdigit() else f"{device}{root_partition_num}"
 
-        import tempfile
         import os
+        import tempfile
 
         # BTRFS subvolumes: create @ and @home
         with tempfile.TemporaryDirectory() as tmp_mnt:

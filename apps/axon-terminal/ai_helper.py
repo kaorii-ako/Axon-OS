@@ -18,7 +18,9 @@ from typing import Callable, Optional
 
 import dbus
 from gi.repository import GLib
+
 from axon_logger import configure_app_logger
+
 logger = configure_app_logger(__name__)
 
 

@@ -9,6 +9,7 @@ import dbus
 import dbus.mainloop.glib
 import dbus.service
 from gi.repository import GLib
+
 from axon_logger import configure_app_logger
 
 AXON_DIR = Path.home() / ".axon"
