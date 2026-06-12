@@ -163,17 +163,21 @@ class SearchService(dbus.service.Object):
         self._stats["indexing"] = True
         files = chunks = 0
         try:
+            known_mtimes = {
+                row[0]: row[1]
+                for row in db.execute("SELECT path, mtime FROM chunks GROUP BY path").fetchall()
+            }
             for path in indexer.iter_candidate_files(Path.home()):
                 try:
                     mtime = Path(path).stat().st_mtime
                 except OSError:
                     continue
-                row = db.execute(
-                    "SELECT mtime FROM chunks WHERE path=? LIMIT 1", (path,)
-                ).fetchone()
-                if row and abs(row[0] - mtime) < 0.5:
+
+                known_mtime = known_mtimes.get(path)
+                if known_mtime is not None and abs(known_mtime - mtime) < 0.5:
                     files += 1
                     continue
+
                 text = indexer.read_text(path)
                 if text is None:
                     continue
@@ -198,12 +202,12 @@ class SearchService(dbus.service.Object):
 
     def _delete_file(self, db, path):
         ids = [r[0] for r in db.execute("SELECT id FROM chunks WHERE path=?", (path,)).fetchall()]
-        if ids:
-            db.executemany(
+        for cid in ids:
+            db.execute(
                 "INSERT INTO fts_chunks(fts_chunks, rowid, text)"
                 " VALUES ('delete', ?,"
                 " (SELECT text FROM chunks WHERE id=?))",
-                [(cid, cid) for cid in ids],
+                (cid, cid),
             )
             try:
                 db.executemany("DELETE FROM vec_chunks WHERE rowid=?", [(cid,) for cid in ids])
