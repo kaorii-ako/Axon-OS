@@ -31,6 +31,7 @@ RESCAN_INTERVAL = 15 * 60  # seconds between full rescans
 
 try:
     import sqlite_vec
+
     HAVE_SQLITE_VEC = True
 except ImportError:
     HAVE_SQLITE_VEC = False
@@ -47,9 +48,7 @@ def open_db():
             db.enable_load_extension(False)
         except Exception:
             pass
-    db.execute(
-        "CREATE TABLE IF NOT EXISTS meta (key TEXT PRIMARY KEY, value TEXT)"
-    )
+    db.execute("CREATE TABLE IF NOT EXISTS meta (key TEXT PRIMARY KEY, value TEXT)")
     db.execute(
         "CREATE TABLE IF NOT EXISTS chunks ("
         " id INTEGER PRIMARY KEY,"
@@ -94,19 +93,20 @@ class SearchService(dbus.service.Object):
         dbus.mainloop.glib.DBusGMainLoop(set_as_default=True)
         self.session_bus = dbus.SessionBus()
         try:
-            self.bus_name = dbus.service.BusName(
-                "org.axonos.Search", bus=self.session_bus
-            )
+            self.bus_name = dbus.service.BusName("org.axonos.Search", bus=self.session_bus)
         except dbus.exceptions.NameExistsException:
             print("org.axonos.Search service is already running.")
             sys.exit(1)
-        dbus.service.Object.__init__(
-            self, self.session_bus, "/org/axonos/Search"
-        )
+        dbus.service.Object.__init__(self, self.session_bus, "/org/axonos/Search")
 
         self._lock = threading.Lock()
-        self._stats = {"files": 0, "chunks": 0, "vector_backend": False,
-                       "last_scan": 0.0, "indexing": False}
+        self._stats = {
+            "files": 0,
+            "chunks": 0,
+            "vector_backend": False,
+            "last_scan": 0.0,
+            "indexing": False,
+        }
         self._rescan_event = threading.Event()
         self._pull_attempted = False
         threading.Thread(target=self._index_loop, daemon=True).start()
@@ -187,22 +187,26 @@ class SearchService(dbus.service.Object):
             db.commit()
             total_chunks = db.execute("SELECT COUNT(*) FROM chunks").fetchone()[0]
             self._stats.update(
-                files=files, chunks=total_chunks,
-                vector_backend=vec_table_ready(db), last_scan=time.time(),
+                files=files,
+                chunks=total_chunks,
+                vector_backend=vec_table_ready(db),
+                last_scan=time.time(),
             )
         finally:
             self._stats["indexing"] = False
             db.close()
 
     def _delete_file(self, db, path):
-        ids = [r[0] for r in db.execute(
-            "SELECT id FROM chunks WHERE path=?", (path,)).fetchall()]
-        for cid in ids:
-            db.execute("INSERT INTO fts_chunks(fts_chunks, rowid, text)"
-                       " VALUES ('delete', ?,"
-                       " (SELECT text FROM chunks WHERE id=?))", (cid, cid))
+        ids = [r[0] for r in db.execute("SELECT id FROM chunks WHERE path=?", (path,)).fetchall()]
+        if ids:
+            db.executemany(
+                "INSERT INTO fts_chunks(fts_chunks, rowid, text)"
+                " VALUES ('delete', ?,"
+                " (SELECT text FROM chunks WHERE id=?))",
+                [(cid, cid) for cid in ids],
+            )
             try:
-                db.execute("DELETE FROM vec_chunks WHERE rowid=?", (cid,))
+                db.executemany("DELETE FROM vec_chunks WHERE rowid=?", [(cid,) for cid in ids])
             except sqlite3.OperationalError:
                 pass
         db.execute("DELETE FROM chunks WHERE path=?", (path,))
@@ -211,13 +215,11 @@ class SearchService(dbus.service.Object):
         self._delete_file(db, path)
         for idx, chunk in enumerate(indexer.chunk_text(text)):
             cur = db.execute(
-                "INSERT INTO chunks(path, mtime, chunk_idx, text)"
-                " VALUES (?,?,?,?)", (path, mtime, idx, chunk),
+                "INSERT INTO chunks(path, mtime, chunk_idx, text)" " VALUES (?,?,?,?)",
+                (path, mtime, idx, chunk),
             )
             cid = cur.lastrowid
-            db.execute(
-                "INSERT INTO fts_chunks(rowid, text) VALUES (?,?)", (cid, chunk)
-            )
+            db.execute("INSERT INTO fts_chunks(rowid, text) VALUES (?,?)", (cid, chunk))
             vec = self._embed(f"search_document: {chunk}")
             if vec and vec_table_ready(db, dim=len(vec)):
                 try:
@@ -270,20 +272,20 @@ class SearchService(dbus.service.Object):
             if path in seen:
                 continue
             seen.add(path)
-            out.append({
-                "path": path,
-                "snippet": text[:220],
-                "score": round(1.0 / (1.0 + float(dist)), 4),
-                "backend": "vector",
-            })
+            out.append(
+                {
+                    "path": path,
+                    "snippet": text[:220],
+                    "score": round(1.0 / (1.0 + float(dist)), 4),
+                    "backend": "vector",
+                }
+            )
             if len(out) >= limit:
                 break
         return out
 
     def _keyword_query(self, db, query, limit):
-        terms = " OR ".join(
-            f'"{t}"' for t in query.replace('"', " ").split() if t
-        )
+        terms = " OR ".join(f'"{t}"' for t in query.replace('"', " ").split() if t)
         if not terms:
             return []
         try:
@@ -300,12 +302,14 @@ class SearchService(dbus.service.Object):
             if path in seen:
                 continue
             seen.add(path)
-            out.append({
-                "path": path,
-                "snippet": snip[:220],
-                "score": round(-float(rank), 4),
-                "backend": "keyword",
-            })
+            out.append(
+                {
+                    "path": path,
+                    "snippet": snip[:220],
+                    "score": round(-float(rank), 4),
+                    "backend": "keyword",
+                }
+            )
             if len(out) >= limit:
                 break
         return out
