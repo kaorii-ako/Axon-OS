@@ -1,0 +1,11 @@
+[Unit]
+Description=Axon OS boot watchdog — mark boot successful
+After=display-manager.service
+Wants=display-manager.service
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/bin/axon-boot-ok
+
+[Install]
+WantedBy=graphical.target

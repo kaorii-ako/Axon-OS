@@ -13,10 +13,15 @@ import gi
 gi.require_version("Gtk", "4.0")
 gi.require_version("Adw", "1")
 
-from gi.repository import Adw, Gdk, GLib, Gtk, Pango  # noqa: E402
+from gi.repository import Adw, Gdk, Gio, GLib, Gtk, Pango  # noqa: E402
 
 from ..ollama_client import OllamaClient  # noqa: E402
 from ..spaces_manager import SpacesManager  # noqa: E402
+
+try:
+    import dbus  # noqa: E402
+except ImportError:  # pragma: no cover - dbus ships on Axon images
+    dbus = None
 
 # ---------------------------------------------------------------------------
 # Axon OS Design System — embedded CSS
@@ -94,6 +99,27 @@ _CSS = b"""
     font-size: 11px;
 }
 
+/* ---- Semantic search result rows ---- */
+.search-result-row {
+    border-radius: 10px;
+    padding: 6px 10px;
+}
+
+.search-result-row:hover {
+    background-color: rgba(139, 92, 246, 0.12);
+}
+
+.search-result-path {
+    color: #c4b5fd;
+    font-size: 13px;
+    font-weight: bold;
+}
+
+.search-result-snippet {
+    color: #70709a;
+    font-size: 11px;
+}
+
 /* ---- Keyboard hint labels ---- */
 .hint-label {
     color: #50507a;
@@ -140,6 +166,7 @@ _CHIPS: list[tuple[str, str]] = [
     ("Find File", "find "),
     ("Open App", "open "),
     ("Run Command", "run "),
+    ("Find Files", "find "),
     ("Search Web", "search "),
     ("Summarize", "summarize "),
 ]
@@ -290,6 +317,12 @@ class IntentBarWindow(Adw.Window):
         self._response_label.set_visible(False)
         root.append(self._response_label)
 
+        # ---- Row 6b: semantic search results ----------------------------
+        self._results_box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=2)
+        self._results_box.set_margin_bottom(8)
+        self._results_box.set_visible(False)
+        root.append(self._results_box)
+
         # ---- Row 7: keyboard hint row -----------------------------------
         hint_row = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=16)
         hint_row.set_margin_top(4)
@@ -391,6 +424,7 @@ class IntentBarWindow(Adw.Window):
         if not query:
             return
 
+<<<<<<< HEAD
         # Push to history and reset index
         self._push_history(query)
         self._history_idx = -1
@@ -399,6 +433,14 @@ class IntentBarWindow(Adw.Window):
         if query.startswith("find "):
             search_query = query[5:].strip()
             self._do_local_semantic_search(search_query)
+=======
+        # "find <something>" routes to the local semantic index instead of
+        # the LLM — works even when Ollama is offline (keyword fallback).
+        if query.lower().startswith("find ") and len(query) > 5:
+            self._push_history(query)
+            self._history_idx = -1
+            self._start_semantic_search(query[5:].strip())
+>>>>>>> origin/main
             return
 
         if not self._ollama.is_available():
@@ -484,6 +526,93 @@ class IntentBarWindow(Adw.Window):
                     stdout=subprocess.DEVNULL,
                     stderr=subprocess.DEVNULL,
                 )
+
+    # ------------------------------------------------------------------
+    # Semantic file search (org.axonos.Search)
+    # ------------------------------------------------------------------
+
+    def _start_semantic_search(self, query: str) -> None:
+        self._spinner.start()
+        self._clear_results()
+        self._response_label.set_text(f'Searching your files for "{query}"...')
+        self._response_label.set_visible(True)
+        threading.Thread(
+            target=self._do_semantic_search, args=(query,), daemon=True
+        ).start()
+
+    def _do_semantic_search(self, query: str) -> None:
+        results: list[dict[str, Any]] = []
+        error = ""
+        if dbus is None:
+            error = "python3-dbus is not available"
+        else:
+            try:
+                bus = dbus.SessionBus()
+                obj = bus.get_object("org.axonos.Search", "/org/axonos/Search")
+                iface = dbus.Interface(obj, "org.axonos.Search")
+                results = json.loads(iface.Query(query, 6, timeout=30))
+            except Exception as exc:
+                error = str(exc)
+        GLib.idle_add(self._show_search_results, query, results, error)
+
+    def _show_search_results(
+        self, query: str, results: list[dict[str, Any]], error: str
+    ) -> bool:
+        self._spinner.stop()
+        self._clear_results()
+        if error:
+            self._show_error(f"[error] Semantic search unavailable: {error}")
+            return False
+        if not results:
+            self._show_error(f'No matching files for "{query}".')
+            return False
+
+        backend = results[0].get("backend", "vector")
+        label = "semantic" if backend == "vector" else "keyword"
+        self._response_label.set_text(
+            f"Top {len(results)} {label} matches — click to open:"
+        )
+        self._response_label.set_visible(True)
+
+        home = GLib.get_home_dir()
+        for item in results:
+            path = str(item.get("path", ""))
+            display = path.replace(home, "~", 1) if home else path
+            row_btn = Gtk.Button()
+            row_btn.add_css_class("search-result-row")
+            row_btn.set_has_frame(False)
+            inner = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=1)
+            path_lbl = Gtk.Label(label=display, xalign=0.0)
+            path_lbl.add_css_class("search-result-path")
+            path_lbl.set_ellipsize(Pango.EllipsizeMode.MIDDLE)
+            inner.append(path_lbl)
+            snippet = " ".join(str(item.get("snippet", "")).split())[:140]
+            if snippet:
+                snip_lbl = Gtk.Label(label=snippet, xalign=0.0)
+                snip_lbl.add_css_class("search-result-snippet")
+                snip_lbl.set_ellipsize(Pango.EllipsizeMode.END)
+                inner.append(snip_lbl)
+            row_btn.set_child(inner)
+            row_btn.connect(
+                "clicked", lambda _b, p=path: self._open_search_result(p)
+            )
+            self._results_box.append(row_btn)
+        self._results_box.set_visible(True)
+        return False
+
+    def _open_search_result(self, path: str) -> None:
+        Gio.AppInfo.launch_default_for_uri(
+            GLib.filename_to_uri(path, None), None
+        )
+        self.close()
+
+    def _clear_results(self) -> None:
+        child = self._results_box.get_first_child()
+        while child is not None:
+            nxt = child.get_next_sibling()
+            self._results_box.remove(child)
+            child = nxt
+        self._results_box.set_visible(False)
 
     # ------------------------------------------------------------------
     # System prompt

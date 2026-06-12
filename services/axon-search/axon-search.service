@@ -1,0 +1,14 @@
+[Unit]
+Description=Axon OS Semantic Search Service
+After=dbus.socket
+
+[Service]
+Type=simple
+ExecStart=/usr/bin/python3 AXON_SERVICES_DIR/axon-search/search_service.py
+Restart=on-failure
+RestartSec=3
+Nice=10
+IOSchedulingClass=idle
+
+[Install]
+WantedBy=default.target

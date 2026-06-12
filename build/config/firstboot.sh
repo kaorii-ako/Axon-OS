@@ -54,29 +54,30 @@ if [[ -d "${SERVICES_DEST}" ]]; then
     DBUS_DIR="${HOME}/.local/share/dbus-1/services"
     mkdir -p "${DBUS_DIR}"
     
-    if [[ -f "${SERVICES_DEST}/axon-brain/org.axonos.Brain.service" ]]; then
-        sed "s|AXON_SERVICES_DIR|${SERVICES_DEST}|g" "${SERVICES_DEST}/axon-brain/org.axonos.Brain.service" > "${DBUS_DIR}/org.axonos.Brain.service"
-    fi
-    if [[ -f "${SERVICES_DEST}/axon-context/org.axonos.Context.service" ]]; then
-        sed "s|AXON_SERVICES_DIR|${SERVICES_DEST}|g" "${SERVICES_DEST}/axon-context/org.axonos.Context.service" > "${DBUS_DIR}/org.axonos.Context.service"
-    fi
-    
+    # Register every service shipping a D-Bus activation file
+    for activation in "${SERVICES_DEST}"/*/org.axonos.*.service; do
+        [[ -f "${activation}" ]] || continue
+        sed "s|AXON_SERVICES_DIR|${SERVICES_DEST}|g" "${activation}" > "${DBUS_DIR}/$(basename "${activation}")"
+    done
+
     # Systemd user services
     echo "[axon-firstboot] Registering Systemd user services..."
     SYSTEMD_DIR="${HOME}/.config/systemd/user"
     mkdir -p "${SYSTEMD_DIR}"
-    
-    if [[ -f "${SERVICES_DEST}/axon-brain/axon-brain.service" ]]; then
-        sed "s|AXON_SERVICES_DIR|${SERVICES_DEST}|g" "${SERVICES_DEST}/axon-brain/axon-brain.service" > "${SYSTEMD_DIR}/axon-brain.service"
-    fi
-    if [[ -f "${SERVICES_DEST}/axon-context/axon-context.service" ]]; then
-        sed "s|AXON_SERVICES_DIR|${SERVICES_DEST}|g" "${SERVICES_DEST}/axon-context/axon-context.service" > "${SYSTEMD_DIR}/axon-context.service"
-    fi
-    
+
+    AXON_UNITS=()
+    for unit in "${SERVICES_DEST}"/*/axon-*.service; do
+        [[ -f "${unit}" ]] || continue
+        sed "s|AXON_SERVICES_DIR|${SERVICES_DEST}|g" "${unit}" > "${SYSTEMD_DIR}/$(basename "${unit}")"
+        AXON_UNITS+=("$(basename "${unit}")")
+    done
+
     # Reload and enable user units
     systemctl --user daemon-reload || true
-    systemctl --user enable axon-brain.service axon-context.service || true
-    systemctl --user restart axon-brain.service axon-context.service 2>/dev/null || true
+    if [[ ${#AXON_UNITS[@]} -gt 0 ]]; then
+        systemctl --user enable "${AXON_UNITS[@]}" || true
+        systemctl --user restart "${AXON_UNITS[@]}" 2>/dev/null || true
+    fi
 fi
 
 # 4. Generate .desktop launchers for applications

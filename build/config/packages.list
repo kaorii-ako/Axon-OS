@@ -103,12 +103,23 @@ gstreamer1.0-plugins-base
 gstreamer1.0-plugins-good
 gstreamer1.0-tools
 
+# ── Axon Voice (push-to-talk capture + spoken replies) ────────────────────────
+pulseaudio-utils
+alsa-utils
+speech-dispatcher
+libnotify-bin
+libglib2.0-bin
+
+# ── Axon Rogue Shield (script sandboxing) ─────────────────────────────────────
+bubblewrap
+
 # ── Installer (native Axon Installer engine dependencies) ────────────────────
 parted
 gdisk
 rsync
 dosfstools
 e2fsprogs
+btrfs-progs
 efibootmgr
 grub-pc-bin
 policykit-1

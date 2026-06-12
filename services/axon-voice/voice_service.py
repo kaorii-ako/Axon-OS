@@ -1,10 +1,32 @@
 #!/usr/bin/env python3
+<<<<<<< HEAD
 import os
 import sys
 import json
 import threading
 import subprocess
 import time
+=======
+"""Axon Voice — local speech-to-intent daemon (org.axonos.Voice).
+
+Push-to-talk flow: a Super+V keybinding runs `axon-voice-toggle`, which
+calls Toggle() over D-Bus (the bus auto-starts this service). The first
+Toggle starts recording the microphone and shows a glowing wave overlay;
+the second stops recording, transcribes the audio locally with
+faster-whisper, and routes the text to org.axonos.Brain.ClassifyIntent.
+App-launch / shell-command intents are executed immediately; plain answers
+are spoken back through speech-dispatcher (spd-say) and shown as a
+desktop notification. Everything runs on-device.
+"""
+
+import os
+import shutil
+import signal
+import subprocess
+import sys
+import tempfile
+import threading
+>>>>>>> origin/main
 from pathlib import Path
 
 import dbus
@@ -12,6 +34,7 @@ import dbus.mainloop.glib
 import dbus.service
 from gi.repository import GLib
 
+<<<<<<< HEAD
 # Ensure we can load axon_logger
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 try:
@@ -21,11 +44,21 @@ except ImportError:
     import logging
     logging.basicConfig(level=logging.INFO)
     logger = logging.getLogger("axon-voice")
+=======
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from intent_router import clean_transcript, parse_intent_response
+
+WHISPER_MODEL = os.environ.get("AXON_WHISPER_MODEL", "base.en")
+WHISPER_DIR = Path.home() / ".axon" / "models" / "whisper"
+MAX_RECORD_SECONDS = 30
+
+>>>>>>> origin/main
 
 class VoiceService(dbus.service.Object):
     def __init__(self):
         dbus.mainloop.glib.DBusGMainLoop(set_as_default=True)
         self.session_bus = dbus.SessionBus()
+<<<<<<< HEAD
         
         try:
             self.bus_name = dbus.service.BusName('org.axonos.Voice', bus=self.session_bus)
@@ -160,10 +193,239 @@ class VoiceService(dbus.service.Object):
         pass
 
 if __name__ == '__main__':
+=======
+        try:
+            self.bus_name = dbus.service.BusName(
+                "org.axonos.Voice", bus=self.session_bus
+            )
+        except dbus.exceptions.NameExistsException:
+            print("org.axonos.Voice service is already running.")
+            sys.exit(1)
+        dbus.service.Object.__init__(self, self.session_bus, "/org/axonos/Voice")
+
+        self._recorder = None  # subprocess.Popen while recording
+        self._wav_path = None
+        self._record_timeout_id = 0
+        self._busy = False
+        self._whisper = None  # lazily loaded WhisperModel
+        self._overlay = None  # lazily built GTK overlay
+        print("Axon Voice D-Bus service registered at /org/axonos/Voice")
+
+    # ------------------------------------------------------------------
+    # D-Bus API
+    # ------------------------------------------------------------------
+
+    @dbus.service.method("org.axonos.Voice", in_signature="", out_signature="b")
+    def Toggle(self):
+        """Start listening, or stop + transcribe. Returns new listening state."""
+        if self._recorder is not None:
+            GLib.idle_add(self._stop_and_process)
+            return False
+        if self._busy:
+            return False
+        GLib.idle_add(self._start_recording)
+        return True
+
+    @dbus.service.method("org.axonos.Voice", in_signature="", out_signature="b")
+    def IsListening(self):
+        return self._recorder is not None
+
+    @dbus.service.signal("org.axonos.Voice", signature="s")
+    def StateChanged(self, state):
+        """Emitted with: listening | transcribing | idle | error."""
+
+    @dbus.service.signal("org.axonos.Voice", signature="s")
+    def TranscriptReady(self, text):
+        """Emitted with the cleaned transcript before intent routing."""
+
+    # ------------------------------------------------------------------
+    # Recording
+    # ------------------------------------------------------------------
+
+    def _recorder_command(self, wav_path):
+        """Best available CLI recorder: pipewire/pulse first, then ALSA."""
+        if shutil.which("parecord"):
+            return ["parecord", "--rate=16000", "--channels=1",
+                    "--format=s16le", "--file-format=wav", wav_path]
+        if shutil.which("arecord"):
+            return ["arecord", "-q", "-f", "S16_LE", "-r", "16000",
+                    "-c", "1", wav_path]
+        return None
+
+    def _start_recording(self):
+        fd, wav_path = tempfile.mkstemp(prefix="axon-voice-", suffix=".wav")
+        os.close(fd)
+        cmd = self._recorder_command(wav_path)
+        if cmd is None:
+            self._notify("Axon Voice", "No microphone recorder found "
+                         "(install pulseaudio-utils or alsa-utils).")
+            self.StateChanged("error")
+            return False
+        try:
+            self._recorder = subprocess.Popen(
+                cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL
+            )
+        except OSError as exc:
+            self._notify("Axon Voice", f"Could not record: {exc}")
+            self.StateChanged("error")
+            return False
+        self._wav_path = wav_path
+        self._show_overlay("Listening... press Super+V again to stop")
+        self.StateChanged("listening")
+        # Hard cap so a forgotten toggle doesn't record forever.
+        self._record_timeout_id = GLib.timeout_add_seconds(
+            MAX_RECORD_SECONDS, self._stop_and_process
+        )
+        return False
+
+    def _stop_and_process(self):
+        if self._record_timeout_id:
+            GLib.source_remove(self._record_timeout_id)
+            self._record_timeout_id = 0
+        rec, self._recorder = self._recorder, None
+        wav, self._wav_path = self._wav_path, None
+        if rec is None:
+            return False
+        rec.send_signal(signal.SIGINT)
+        try:
+            rec.wait(timeout=3)
+        except subprocess.TimeoutExpired:
+            rec.kill()
+        self._busy = True
+        self._set_overlay_status("Transcribing on-device...")
+        self.StateChanged("transcribing")
+        threading.Thread(
+            target=self._transcribe_and_route, args=(wav,), daemon=True
+        ).start()
+        return False
+
+    # ------------------------------------------------------------------
+    # Transcription + routing (worker thread)
+    # ------------------------------------------------------------------
+
+    def _load_whisper(self):
+        if self._whisper is not None:
+            return self._whisper
+        from faster_whisper import WhisperModel  # lazy: heavy import
+        WHISPER_DIR.mkdir(parents=True, exist_ok=True)
+        self._whisper = WhisperModel(
+            WHISPER_MODEL, device="cpu", compute_type="int8",
+            download_root=str(WHISPER_DIR),
+        )
+        return self._whisper
+
+    def _transcribe_and_route(self, wav_path):
+        text = ""
+        error = ""
+        try:
+            model = self._load_whisper()
+            segments, _info = model.transcribe(wav_path, beam_size=1)
+            text = clean_transcript(" ".join(s.text for s in segments))
+        except Exception as exc:
+            error = f"{exc}"
+        finally:
+            try:
+                os.unlink(wav_path)
+            except OSError:
+                pass
+
+        if error:
+            GLib.idle_add(self._finish, "", f"Transcription failed: {error}")
+            return
+        if not text:
+            GLib.idle_add(self._finish, "", "Didn't catch that — try again.")
+            return
+
+        GLib.idle_add(self.TranscriptReady, text)
+        GLib.idle_add(self._set_overlay_status, f'"{text}"')
+
+        reply = self._classify(text)
+        kind, payload = parse_intent_response(reply)
+        if kind == "open_app":
+            launcher = ["gtk-launch", payload] if shutil.which("gtk-launch") else [payload]
+            subprocess.Popen(launcher, stdout=subprocess.DEVNULL,
+                             stderr=subprocess.DEVNULL)
+            GLib.idle_add(self._finish, f"Opening {payload}", "")
+        elif kind == "run_command":
+            subprocess.Popen(payload, shell=True,
+                             stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+            GLib.idle_add(self._finish, f"Running: {payload}", "")
+        else:
+            spoken = payload if payload else "I don't have an answer for that."
+            self._speak(spoken)
+            GLib.idle_add(self._finish, spoken, "")
+
+    def _classify(self, text):
+        try:
+            obj = self.session_bus.get_object("org.axonos.Brain", "/org/axonos/Brain")
+            brain = dbus.Interface(obj, "org.axonos.Brain")
+            return str(brain.ClassifyIntent(text, timeout=45))
+        except dbus.exceptions.DBusException as exc:
+            return f"The AI brain is not available right now ({exc.get_dbus_name()})."
+
+    # ------------------------------------------------------------------
+    # Output helpers
+    # ------------------------------------------------------------------
+
+    def _speak(self, text):
+        if shutil.which("spd-say"):
+            subprocess.Popen(["spd-say", "--wait-mode", "no", text[:500]],
+                             stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+
+    def _notify(self, title, body):
+        if shutil.which("notify-send"):
+            subprocess.Popen(["notify-send", "-i", "audio-input-microphone",
+                              title, body[:400]],
+                             stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+
+    def _finish(self, result, error):
+        self._busy = False
+        if error:
+            self._notify("Axon Voice", error)
+        elif result:
+            self._notify("Axon Voice", result)
+        self._hide_overlay()
+        self.StateChanged("idle")
+        return False
+
+    # ------------------------------------------------------------------
+    # Overlay (GTK, optional — daemon keeps working headless)
+    # ------------------------------------------------------------------
+
+    def _show_overlay(self, status):
+        try:
+            if self._overlay is None:
+                import gi
+                gi.require_version("Gtk", "4.0")
+                from gi.repository import Gtk
+                if not Gtk.init_check():
+                    return
+                from overlay import VoiceOverlay
+                self._overlay = VoiceOverlay()
+            self._overlay.show(status)
+        except Exception as exc:
+            print(f"[axon-voice] overlay unavailable: {exc}")
+            self._overlay = None
+
+    def _set_overlay_status(self, status):
+        if self._overlay is not None:
+            self._overlay.set_status(status)
+        return False
+
+    def _hide_overlay(self):
+        if self._overlay is not None:
+            self._overlay.hide()
+
+
+if __name__ == "__main__":
+>>>>>>> origin/main
     loop = GLib.MainLoop()
     service = VoiceService()
     try:
         loop.run()
     except KeyboardInterrupt:
+<<<<<<< HEAD
         logger.info("Stopping Axon Voice Service...")
+=======
+>>>>>>> origin/main
         loop.quit()

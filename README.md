@@ -21,6 +21,11 @@ The operating system is built around two centralized D-Bus services — **Axon B
 - **AI Panel (Super+A)** — A slide-in side panel with persistent, context-aware AI conversations. The panel automatically includes your desktop context (active window, open files, recent commands) in every query.
 - **Axon Terminal** — An AI-powered terminal with automatic error diagnosis, natural-language-to-command conversion, and smart suggestions when commands fail.
 - **GTK4 + libadwaita theming** — Native GNOME components with a custom Axon dark theme built on libadwaita for crisp HiDPI rendering.
+- **Axon Voice (`org.axonos.Voice`, Super+V)** — Push-to-talk speech-to-intent: audio is transcribed locally with faster-whisper (model cached in `~/.axon/models/whisper/`), routed through `Brain.ClassifyIntent`, and executed — with a glowing wave overlay during capture and spoken answers via speech-dispatcher.
+- **Semantic Search (`org.axonos.Search`)** — An ambient indexer that chunks and embeds your documents/code into a `sqlite-vec` vector store (`~/.axon/semantic-index.db`) using local `nomic-embed-text` embeddings. Type `find the script with the snapshot logic` in the Intent Bar and get meaning-based matches; falls back to FTS5 keyword search offline.
+- **Rogue Software Shield (`axon-shield`)** — Run untrusted scripts through a static + AI audit (SSH-key theft, `curl | sh`, reverse shells, persistence hooks...) and execute them inside a bubblewrap sandbox with a read-only home, masked secrets, and optional network blackout.
+- **GUI Agent (`org.axonos.GuiAgent`)** — Tell the OS to change its own settings: natural-language requests are compiled by the Brain into an allowlisted plan of `gsettings` operations ("enable night light and make text bigger") and applied in milliseconds — no synthetic clicking.
+- **Self-Healing Boot Watchdog** — Installs root on BTRFS `@`/`@home` subvolumes, snapshots a factory `@axon-fallback` after install, and counts boot attempts in a GRUB env file on the ESP. Two consecutive failed boots and GRUB automatically boots the rollback snapshot.
 - **Zero cloud dependency** — No telemetry, no mandatory accounts, no remote inference endpoints. All data stays on your machine in `~/.axon/`.
 
 ## Installation

@@ -1,0 +1,35 @@
+#!/bin/sh
+# Axon OS — self-healing boot watchdog (counter logic).
+# Installed as /etc/grub.d/06_axon_watchdog; emits GRUB script into grub.cfg.
+# Only active when the root filesystem is btrfs (installed systems).
+set -e
+
+if [ "$(grub-probe --target=fs / 2>/dev/null)" != "btrfs" ]; then
+    exit 0
+fi
+
+cat <<'EOF'
+# --- Axon OS boot watchdog -------------------------------------------------
+# Counts boot attempts in a grubenv file on the ESP (GRUB cannot write to
+# btrfs). A systemd unit resets the counter to 0 once the boot reaches the
+# display manager. Two consecutive failures => the third boot automatically
+# selects the factory rollback snapshot.
+if search --no-floppy --label --set=axon_esp AXONESP; then
+    if [ -e (${axon_esp})/axon/grubenv ]; then
+        load_env --file (${axon_esp})/axon/grubenv boot_attempts
+        if [ "${boot_attempts}" = "1" ]; then
+            set boot_attempts=2
+        elif [ "${boot_attempts}" = "2" ]; then
+            set boot_attempts=3
+        else
+            set boot_attempts=1
+        fi
+        save_env --file (${axon_esp})/axon/grubenv boot_attempts
+        if [ "${boot_attempts}" = "3" ]; then
+            set default='Axon OS — Recovery rollback (factory snapshot)'
+            set timeout=3
+        fi
+    fi
+fi
+# --- end Axon OS boot watchdog ----------------------------------------------
+EOF

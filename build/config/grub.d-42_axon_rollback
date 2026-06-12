@@ -1,0 +1,28 @@
+#!/bin/sh
+# Axon OS — rollback menuentry booting the @axon-fallback factory snapshot.
+# Installed as /etc/grub.d/42_axon_rollback.
+set -e
+
+if [ "$(grub-probe --target=fs / 2>/dev/null)" != "btrfs" ]; then
+    exit 0
+fi
+
+uuid="$(grub-probe --target=fs_uuid / 2>/dev/null)" || exit 0
+[ -n "${uuid}" ] || exit 0
+
+kernel="$(ls -1 /boot/vmlinuz-* 2>/dev/null | sort -V | tail -n 1)"
+initrd="$(ls -1 /boot/initrd.img-* 2>/dev/null | sort -V | tail -n 1)"
+[ -n "${kernel}" ] || exit 0
+
+kbase="$(basename "${kernel}")"
+cat <<EOF
+menuentry 'Axon OS — Recovery rollback (factory snapshot)' --class axon --class gnu-linux {
+    insmod part_gpt
+    insmod btrfs
+    search --no-floppy --fs-uuid --set=root ${uuid}
+    linux /@axon-fallback/boot/${kbase} root=UUID=${uuid} rootflags=subvol=@axon-fallback rw quiet splash axon.rollback=1
+EOF
+if [ -n "${initrd}" ]; then
+    echo "    initrd /@axon-fallback/boot/$(basename "${initrd}")"
+fi
+echo "}"

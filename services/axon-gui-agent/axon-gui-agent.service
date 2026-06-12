@@ -1,5 +1,9 @@
 [Unit]
+<<<<<<< HEAD
 Description=Axon OS GUI Agent Service
+=======
+Description=Axon OS GUI Agent (desktop automation) Service
+>>>>>>> origin/main
 After=dbus.socket
 
 [Service]

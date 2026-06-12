@@ -1,0 +1,7 @@
+#!/bin/sh
+# Axon OS — push-to-talk toggle, bound to Super+V.
+# D-Bus activation starts the voice service on first use.
+exec gdbus call --session \
+    --dest org.axonos.Voice \
+    --object-path /org/axonos/Voice \
+    --method org.axonos.Voice.Toggle >/dev/null 2>&1

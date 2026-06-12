@@ -11,7 +11,22 @@ from __future__ import annotations
 import json
 import subprocess
 from dataclasses import dataclass, field
-from axon_logger import configure_app_logger
+
+try:
+    from axon_logger import configure_app_logger
+except ImportError:  # running standalone — repo root / installed shim not on sys.path
+    import sys as _sys
+    from pathlib import Path as _Path
+
+    _sys.path.insert(0, str(_Path(__file__).resolve().parents[1]))
+    try:
+        from axon_logger import configure_app_logger
+    except ImportError:
+        import logging as _logging
+
+        def configure_app_logger(name, level=_logging.INFO, log_file=None):
+            _logging.basicConfig(level=level)
+            return _logging.getLogger(name)
 
 # ---------------------------------------------------------------------------
 # Data classes
@@ -267,8 +282,8 @@ class Partitioner:
         efi_part  = f"{device}p1" if device[-1].isdigit() else f"{device}1"
         root_part = f"{device}p2" if device[-1].isdigit() else f"{device}2"
 
-        import tempfile
         import os
+        import tempfile
 
         # BTRFS subvolumes: create @ and @home
         with tempfile.TemporaryDirectory() as tmp_mnt:
@@ -294,8 +309,8 @@ class Partitioner:
         efi_part  = f"{device}p{efi_partition_num}" if device[-1].isdigit() else f"{device}{efi_partition_num}"
         root_part = f"{device}p{root_partition_num}" if device[-1].isdigit() else f"{device}{root_partition_num}"
 
-        import tempfile
         import os
+        import tempfile
 
         # BTRFS subvolumes: create @ and @home
         with tempfile.TemporaryDirectory() as tmp_mnt:
