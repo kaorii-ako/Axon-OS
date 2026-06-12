@@ -238,9 +238,7 @@ def draw_menubar(img):
     img.paste(bar_layer, (0, 0), bar_layer)
     draw = ImageDraw.Draw(img)
 
-    f12 = _font(12)
-    f13b = _font(13, True)
-    f11 = _font(11)
+    f12 = _font(12); f13b = _font(13, True)
 
     hexagon(draw, 16, 15, 7, P["violet"])
     draw.text((28, 7), "Axon OS", font=f13b, fill=P["text"])
