@@ -6,6 +6,8 @@ import time
 from collections import defaultdict
 from typing import Any, Callable, Dict, Optional, Tuple
 
+import dbus
+
 
 class TTLCache:
     """Simple TTL (Time-To-Live) cache for frequently accessed data."""

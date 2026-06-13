@@ -109,52 +109,6 @@ done
 # D-Bus session activation files (resolve AXON_SERVICES_DIR) — every
 # service directory that ships org.axonos.*.service / *.conf is registered.
 mkdir -p /usr/share/dbus-1/services /usr/share/dbus-1/session.d
-<<<<<<< HEAD
-sed "s|AXON_SERVICES_DIR|${SERVICES_DIR}|g" \
-    "${SERVICES_DIR}/axon-brain/org.axonos.Brain.service" \
-    > /usr/share/dbus-1/services/org.axonos.Brain.service
-sed "s|AXON_SERVICES_DIR|${SERVICES_DIR}|g" \
-    "${SERVICES_DIR}/axon-context/org.axonos.Context.service" \
-    > /usr/share/dbus-1/services/org.axonos.Context.service
-sed "s|AXON_SERVICES_DIR|${SERVICES_DIR}|g" \
-    "${SERVICES_DIR}/axon-voice/org.axonos.Voice.service" \
-    > /usr/share/dbus-1/services/org.axonos.Voice.service
-sed "s|AXON_SERVICES_DIR|${SERVICES_DIR}|g" \
-    "${SERVICES_DIR}/axon-sandbox/org.axonos.Sandbox.service" \
-    > /usr/share/dbus-1/services/org.axonos.Sandbox.service
-sed "s|AXON_SERVICES_DIR|${SERVICES_DIR}|g" \
-    "${SERVICES_DIR}/axon-gui-agent/org.axonos.GuiAgent.service" \
-    > /usr/share/dbus-1/services/org.axonos.GuiAgent.service
-
-cp "${SERVICES_DIR}/axon-brain/org.axonos.Brain.conf" /usr/share/dbus-1/session.d/
-cp "${SERVICES_DIR}/axon-context/org.axonos.Context.conf" /usr/share/dbus-1/session.d/
-cp "${SERVICES_DIR}/axon-voice/org.axonos.Voice.conf" /usr/share/dbus-1/session.d/
-cp "${SERVICES_DIR}/axon-sandbox/org.axonos.Sandbox.conf" /usr/share/dbus-1/session.d/
-cp "${SERVICES_DIR}/axon-gui-agent/org.axonos.GuiAgent.conf" /usr/share/dbus-1/session.d/
-
-# systemd user units, enabled globally for every user
-mkdir -p /usr/lib/systemd/user
-sed "s|AXON_SERVICES_DIR|${SERVICES_DIR}|g" \
-    "${SERVICES_DIR}/axon-brain/axon-brain.service" \
-    > /usr/lib/systemd/user/axon-brain.service
-sed "s|AXON_SERVICES_DIR|${SERVICES_DIR}|g" \
-    "${SERVICES_DIR}/axon-context/axon-context.service" \
-    > /usr/lib/systemd/user/axon-context.service
-sed "s|AXON_SERVICES_DIR|${SERVICES_DIR}|g" \
-    "${SERVICES_DIR}/axon-context/axon-file-indexer.service" \
-    > /usr/lib/systemd/user/axon-file-indexer.service
-sed "s|AXON_SERVICES_DIR|${SERVICES_DIR}|g" \
-    "${SERVICES_DIR}/axon-voice/axon-voice.service" \
-    > /usr/lib/systemd/user/axon-voice.service
-sed "s|AXON_SERVICES_DIR|${SERVICES_DIR}|g" \
-    "${SERVICES_DIR}/axon-sandbox/axon-sandbox.service" \
-    > /usr/lib/systemd/user/axon-sandbox.service
-sed "s|AXON_SERVICES_DIR|${SERVICES_DIR}|g" \
-    "${SERVICES_DIR}/axon-gui-agent/axon-gui-agent.service" \
-    > /usr/lib/systemd/user/axon-gui-agent.service
-
-systemctl --global enable axon-brain.service axon-context.service axon-file-indexer.service axon-voice.service axon-sandbox.service axon-gui-agent.service
-=======
 for activation in "${SERVICES_DIR}"/*/org.axonos.*.service; do
     [[ -f "${activation}" ]] || continue
     sed "s|AXON_SERVICES_DIR|${SERVICES_DIR}|g" "${activation}" \
@@ -174,7 +128,6 @@ for unit in "${SERVICES_DIR}"/*/axon-*.service; do
     AXON_USER_UNITS+=("$(basename "${unit}")")
 done
 systemctl --global enable "${AXON_USER_UNITS[@]}"
->>>>>>> origin/main
 
 # GNOME Shell extension, system-wide
 EXT_DIR="/usr/share/gnome-shell/extensions/axon-shell@axon-os"

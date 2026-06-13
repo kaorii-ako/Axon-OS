@@ -424,23 +424,12 @@ class IntentBarWindow(Adw.Window):
         if not query:
             return
 
-<<<<<<< HEAD
-        # Push to history and reset index
-        self._push_history(query)
-        self._history_idx = -1
-
-        # Direct route for semantic file search
-        if query.startswith("find "):
-            search_query = query[5:].strip()
-            self._do_local_semantic_search(search_query)
-=======
         # "find <something>" routes to the local semantic index instead of
         # the LLM — works even when Ollama is offline (keyword fallback).
         if query.lower().startswith("find ") and len(query) > 5:
             self._push_history(query)
             self._history_idx = -1
             self._start_semantic_search(query[5:].strip())
->>>>>>> origin/main
             return
 
         if not self._ollama.is_available():

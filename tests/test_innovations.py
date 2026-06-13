@@ -227,13 +227,19 @@ class TestFstab:
 import sqlite3
 from unittest.mock import MagicMock
 
-# Safely mock D-Bus/GLib before importing search_service
-sys.modules["dbus"] = MagicMock()
-sys.modules["dbus.mainloop"] = MagicMock()
-sys.modules["dbus.mainloop.glib"] = MagicMock()
-sys.modules["dbus.service"] = MagicMock()
-sys.modules["gi"] = MagicMock()
-sys.modules["gi.repository"] = MagicMock()
+# search_service imports dbus + gi at module load. Use the real bindings when
+# they exist (CI and dev machines install python3-dbus / python3-gi); only fall
+# back to mocks on a bare interpreter. Unconditionally overwriting sys.modules
+# here would poison D-Bus for every other test in the session.
+for _mod in (
+    "dbus", "dbus.mainloop", "dbus.mainloop.glib", "dbus.service",
+    "gi", "gi.repository",
+):
+    if _mod not in sys.modules:
+        try:
+            __import__(_mod)
+        except ImportError:
+            sys.modules[_mod] = MagicMock()
 
 import search_service
 

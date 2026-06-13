@@ -12,13 +12,8 @@ ruff==0.2.0
 ruff-lsp==0.0.53
 
 # Type checking
-<<<<<<< HEAD
-mypy==1.7.1
-types-PyGObject==1.2.0
-=======
 mypy>=1.5.0
 PyGObject-stubs>=2.10
->>>>>>> origin/main
 
 # Code formatting
 black==24.1.0

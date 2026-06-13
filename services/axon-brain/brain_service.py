@@ -2,7 +2,6 @@
 """Axon Brain D-Bus Service - Centralized AI inference and model management."""
 
 import json
-import logging
 import re
 import sys
 import threading
@@ -11,16 +10,11 @@ import urllib.error
 import urllib.request
 import uuid
 from pathlib import Path
-<<<<<<< HEAD
-from typing import Any, Dict, Optional
-=======
->>>>>>> origin/main
 
 import dbus
 import dbus.mainloop.glib
 import dbus.service
 import tomllib
-from axon_logger import configure_app_logger
 from gi.repository import GLib
 
 try:
@@ -35,6 +29,8 @@ except ImportError:  # running standalone — repo root / installed shim not on 
         def configure_app_logger(name, level=_logging.INFO, log_file=None):
             _logging.basicConfig(level=level)
             return _logging.getLogger(name)
+
+logger = configure_app_logger("axon-brain")
 
 # Ensure we can import hardware_profiler and conversation_store
 sys.path.insert(0, str(Path(__file__).resolve().parent))
@@ -55,7 +51,6 @@ class BrainService(dbus.service.Object):
         self.session_bus = dbus.SessionBus()
         
         # Request name org.axonos.Brain
-        logger = configure_app_logger(__name__)
         try:
             self.bus_name = dbus.service.BusName('org.axonos.Brain', bus=self.session_bus)
         except dbus.exceptions.NameExistsException:
@@ -111,7 +106,6 @@ class BrainService(dbus.service.Object):
             data=data,
             headers={"Content-Type": "application/json"}
         )
-        import time
         max_backoff = 30.0
         for attempt in range(max_retries):
             try:
@@ -125,7 +119,6 @@ class BrainService(dbus.service.Object):
     def _http_get(self, url, timeout=5.0):
         """Helper to execute urllib GET requests with retry logic."""
         req = urllib.request.Request(url)
-        import time
         max_retries = 5
         max_backoff = 30.0
         for attempt in range(max_retries):
@@ -136,6 +129,32 @@ class BrainService(dbus.service.Object):
                     raise
                 backoff = min(2.0 ** attempt, max_backoff)
                 time.sleep(backoff)
+
+    # ------------------------------------------------------------------
+    # Input validation (defence against injection / abuse)
+    # ------------------------------------------------------------------
+
+    # Ollama tags: alnum start, then alnum plus . _ : / - (namespaced models
+    # like "library/llama3" are allowed; ".." path traversal is not).
+    _MODEL_NAME_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._:/-]*$")
+    _MAX_MODEL_NAME_LEN = 256
+    _MAX_PROMPT_LEN = 10000
+
+    @staticmethod
+    def _validate_model_name(name):
+        """True if name is a safe Ollama model tag (no shell/path injection)."""
+        if not isinstance(name, str) or not name:
+            return False
+        if len(name) > BrainService._MAX_MODEL_NAME_LEN or ".." in name:
+            return False
+        return bool(BrainService._MODEL_NAME_RE.match(name))
+
+    @staticmethod
+    def _validate_prompt(prompt):
+        """True if prompt is a non-empty string within the length limit."""
+        if not isinstance(prompt, str) or not prompt:
+            return False
+        return len(prompt) <= BrainService._MAX_PROMPT_LEN
 
     # ------------------------------------------------------------------
     # D-Bus Methods
@@ -174,12 +193,19 @@ class BrainService(dbus.service.Object):
     @dbus.service.method('org.axonos.Brain', in_signature='s', out_signature='b')
     def PullModel(self, model_name):
         """Starts model pull in a background thread."""
-        threading.Thread(target=self._do_pull_model, args=(model_name,), daemon=True).start()
+        if not self._validate_model_name(str(model_name)):
+            logger.warning("Rejected PullModel for invalid name: %r", model_name)
+            return False
+        threading.Thread(target=self._do_pull_model, args=(str(model_name),), daemon=True).start()
         return True
 
     @dbus.service.method('org.axonos.Brain', in_signature='sssb', out_signature='s')
     def Generate(self, prompt, context, model, stream):
         """Unified text generation interface. If streaming, returns a transaction ID."""
+        if not self._validate_prompt(str(prompt)):
+            return json.dumps({"error": "invalid prompt (empty or too long)"})
+        if model and not self._validate_model_name(str(model)):
+            return json.dumps({"error": f"invalid model name: {model!r}"})
         if not model:
             model = self.config["general_model"]
             
@@ -489,6 +515,5 @@ if __name__ == '__main__':
     try:
         loop.run()
     except KeyboardInterrupt:
-        logger = configure_app_logger(__name__)
         logger.info("Stopping Axon Brain service...")
         loop.quit()

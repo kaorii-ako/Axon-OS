@@ -1,11 +1,11 @@
 #!/usr/bin/env python3
-import os
-import sys
 import json
+import os
 import sqlite3
+import sys
 import time
-from pathlib import Path
 from array import array
+from pathlib import Path
 
 import dbus
 import sqlite_vec
@@ -122,7 +122,7 @@ class FileIndexer:
                 
             self.conn.commit()
             logger.info(f"Successfully indexed: {p}")
-        except Exception as e:
+        except Exception:
             logger.exception(f"Error indexing {file_path}:")
 
     def remove_deleted_files(self):

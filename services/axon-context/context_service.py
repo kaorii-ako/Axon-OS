@@ -120,8 +120,9 @@ class ContextService(dbus.service.Object):
         """Performs vector search in the indexed documents using sqlite-vec."""
         try:
             import sqlite3
-            import sqlite_vec
             from array import array
+
+            import sqlite_vec
             
             # 1. Fetch embedding of query_text via Brain service
             brain_obj = self.session_bus.get_object('org.axonos.Brain', '/org/axonos/Brain')

@@ -1,7 +1,6 @@
 #!/usr/bin/env python3
-import os
-import sys
 import json
+import sys
 import threading
 from pathlib import Path
 
@@ -12,7 +11,7 @@ import gi
 
 gi.require_version("Gtk", "4.0")
 gi.require_version("Adw", "1")
-from gi.repository import Adw, Gdk, GLib, Gtk
+from gi.repository import Gdk, GLib, Gtk
 
 # Ensure we can load axon_logger
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
@@ -248,7 +247,7 @@ class SandboxManager(dbus.service.Object):
                 logger.info(f"Script {script_path} is marked clean. Allow execution.")
                 dbus_ok("allow")
 
-        except Exception as e:
+        except Exception:
             logger.exception("Error in sandbox manager:")
             dbus_ok("allow")
 

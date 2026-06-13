@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 import sys
-from pathlib import Path
 import unittest
+from pathlib import Path
 from unittest.mock import mock_open, patch
 
 # Paths
@@ -11,6 +11,7 @@ BRAIN_SERVICE_DIR = PROJECT_ROOT / "services" / "axon-brain"
 sys.path.insert(0, str(BRAIN_SERVICE_DIR))
 
 import hardware_profiler
+
 
 class TestHardwareProfiler(unittest.TestCase):
     def test_get_system_ram_valid(self):

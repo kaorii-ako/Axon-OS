@@ -1,12 +1,7 @@
 [Unit]
-<<<<<<< HEAD
-Description=Axon OS AI Voice Service
-After=dbus.socket
-=======
 Description=Axon OS Voice (speech-to-intent) Service
 After=graphical-session.target
 PartOf=graphical-session.target
->>>>>>> origin/main
 
 [Service]
 Type=simple
@@ -15,8 +10,4 @@ Restart=on-failure
 RestartSec=3
 
 [Install]
-<<<<<<< HEAD
-WantedBy=default.target
-=======
 WantedBy=graphical-session.target
->>>>>>> origin/main

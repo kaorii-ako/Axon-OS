@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
 """Test suite for Axon D-Bus services."""
 
-import json
+from unittest.mock import Mock, patch
+
 import pytest
-from unittest.mock import Mock, patch, MagicMock
 
 
 class TestBrainService:
@@ -68,7 +68,6 @@ class TestBrainService:
     @patch('services.axon_brain.brain_service.hardware_profiler')
     def test_load_config_fallback(self, mock_profiler: Mock) -> None:
         """Test config loading with hardware profiler fallback."""
-        from services.axon_brain.brain_service import BrainService
         
         mock_profiler.profile_hardware.return_value = {
             "recommendations": {
@@ -88,7 +87,6 @@ class TestContextService:
 
     def test_get_active_context_json(self) -> None:
         """Test that GetActiveContext returns valid JSON."""
-        from services.axon_context.context_service import ContextService
         
         # Would need to mock dbus session
         # This is a placeholder for full test
@@ -96,7 +94,6 @@ class TestContextService:
 
     def test_set_active_window_validation(self) -> None:
         """Test SetActiveWindow with valid/invalid inputs."""
-        from services.axon_context.context_service import ContextService
         
         # Test validation of window title and app_id
         assert True  # Would need dbus mocking
@@ -115,8 +112,9 @@ class TestServiceUtils:
 
     def test_ttl_cache_get_expired(self) -> None:
         """Test TTL cache returns None for expired entries."""
-        from services.service_utils import TTLCache
         import time
+
+        from services.service_utils import TTLCache
         
         cache = TTLCache(ttl_seconds=1)
         cache.set("test_key", "test_value")
@@ -150,8 +148,9 @@ class TestServiceUtils:
 
     def test_rate_limiter_window_reset(self) -> None:
         """Test rate limiter resets after window expires."""
-        from services.service_utils import RateLimiter
         import time
+
+        from services.service_utils import RateLimiter
         
         limiter = RateLimiter(rate=1, window_seconds=1)
         identifier = "test_client"

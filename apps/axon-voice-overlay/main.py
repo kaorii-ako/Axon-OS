@@ -1,10 +1,13 @@
 #!/usr/bin/env python3
-import sys
 import math
+import sys
+
 import gi
+
 gi.require_version('Gtk', '4.0')
 gi.require_version('Adw', '1')
-from gi.repository import Gtk, Gdk, GLib, Adw
+from gi.repository import Adw, Gdk, GLib, Gtk
+
 
 class VoiceOverlay(Gtk.ApplicationWindow):
     def __init__(self, *args, **kwargs):
