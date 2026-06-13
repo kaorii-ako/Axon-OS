@@ -58,6 +58,31 @@ jobs:
           ls -lh dist/
           cat dist/*.sha256
 
+      - name: Verify ISO is bootable (El Torito + live payload)
+        run: |
+          set -euo pipefail
+          ISO=$(ls dist/*.iso)
+          echo "Verifying $ISO"
+
+          # 1. El Torito boot catalog must advertise BOTH BIOS and UEFI so the
+          #    image boots on legacy and modern firmware.
+          report=$(xorriso -indev "$ISO" -report_el_torito plain 2>/dev/null)
+          echo "$report"
+          echo "$report" | grep -qi 'BIOS' || { echo "::error::ISO has no BIOS El Torito boot entry"; exit 1; }
+          echo "$report" | grep -qi 'UEFI' || { echo "::error::ISO has no UEFI El Torito boot entry"; exit 1; }
+
+          # 2. The live-boot payload must be present, or the ISO boots to nothing.
+          listing=$(xorriso -indev "$ISO" -find / -type f 2>/dev/null)
+          for f in /casper/vmlinuz /casper/initrd /casper/filesystem.squashfs /boot/grub/grub.cfg; do
+            echo "$listing" | grep -q "'$f'" || { echo "::error::ISO is missing $f"; exit 1; }
+          done
+
+          # 3. A real root filesystem, not an empty placeholder.
+          size=$(stat -c%s "$ISO")
+          [ "$size" -gt 700000000 ] || { echo "::error::ISO is only $size bytes — build likely incomplete"; exit 1; }
+
+          echo "✓ ISO verification passed: hybrid BIOS+UEFI boot catalog and live payload present ($((size/1024/1024)) MiB)."
+
       - name: Upload ISO artifact
         uses: actions/upload-artifact@v4
         with:
