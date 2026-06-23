@@ -266,13 +266,15 @@ class AdvancedVoiceService(dbus.service.Object):
                 self._recorder.kill()
             self._recorder = None
 
-        if self._wav_path and Path(self._wav_path).exists():
-            result = self._transcribe_file(self._wav_path)
+        wav_path = self._wav_path
+        self._wav_path = None
+
+        if wav_path and Path(wav_path).exists():
+            result = self._transcribe_file(wav_path)
             try:
-                os.unlink(self._wav_path)
+                os.unlink(wav_path)
             except OSError:
                 pass
-            self._wav_path = None
             self._busy = False
             self.TranscriptReady(result)
         else:
@@ -282,21 +284,19 @@ class AdvancedVoiceService(dbus.service.Object):
     def _monitor_audio(self):
         """Monitor audio levels during recording."""
         while self._listening and self._recorder:
+            wav_path = self._wav_path
+            if not wav_path or not Path(wav_path).exists():
+                break
             try:
-                # Read a small chunk and compute RMS
                 import wave
-                if self._wav_path and Path(self._wav_path).exists():
-                    try:
-                        with wave.open(self._wav_path, "rb") as wf:
-                            frames = wf.readframes(min(1600, wf.getnframes()))
-                            if frames:
-                                import struct
-                                samples = struct.unpack(f"<{len(frames)//2}h", frames)
-                                rms = (sum(s**2 for s in samples) / max(len(samples), 1)) ** 0.5
-                                self._audio_level = min(rms / 32768.0, 1.0)
-                                self.AudioLevel(self._audio_level)
-                    except Exception:
-                        pass
+                with wave.open(wav_path, "rb") as wf:
+                    frames = wf.readframes(min(1600, wf.getnframes()))
+                    if frames:
+                        import struct
+                        samples = struct.unpack(f"<{len(frames)//2}h", frames)
+                        rms = (sum(s**2 for s in samples) / max(len(samples), 1)) ** 0.5
+                        self._audio_level = min(rms / 32768.0, 1.0)
+                        self.AudioLevel(self._audio_level)
             except Exception:
                 pass
             time.sleep(0.1)

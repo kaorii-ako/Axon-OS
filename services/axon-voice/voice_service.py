@@ -292,6 +292,8 @@ class VoiceService(dbus.service.Object):
                 except Exception as e:
                     log.debug("spd-say TTS failed: %s", e)
                     continue
+        log.warning("No TTS engine available (tried: %s)", ", ".join(candidates))
+        self._notify("Axon Voice", "No text-to-speech engine found. Install piper, espeak, or spd-say.")
 
     def _notify(self, title, body):
         if shutil.which("notify-send"):

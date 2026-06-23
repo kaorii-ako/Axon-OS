@@ -262,16 +262,45 @@ export default class IntentBar {
         this._setResponse(responseText.trim());
     }
 
+    _isCommandSafe(command) {
+        if (!command || typeof command !== 'string') return false;
+        const forbidden = ['|', ';', '&', '$', '`', '\\', '(', ')', '{', '}',
+                           '<', '>', '*', '?', '~', '#', '!', '\n', '\r'];
+        for (const ch of forbidden) {
+            if (command.includes(ch)) return false;
+        }
+        const allowedBinaries = [
+            'ls', 'cat', 'grep', 'find', 'echo', 'date', 'whoami', 'hostname',
+            'uname', 'df', 'du', 'free', 'uptime', 'ps', 'pwd', 'wc', 'head',
+            'tail', 'sort', 'uniq', 'diff', 'file', 'stat', 'xdg-open',
+            'gtk-launch', 'notify-send', 'zenity', 'apt', 'apt-get', 'git',
+            'make', 'systemctl', 'journalctl', 'nmcli', 'bluetoothctl', 'pactl',
+        ];
+        const parts = command.trim().split(/\s+/);
+        const binary = parts[0];
+        if (!binary) return false;
+        return allowedBinaries.includes(binary);
+    }
+
     _executeAction(action) {
         try {
             if (action.action === 'open_app' && action.app) {
-                GLib.spawn_command_line_async(`gtk-launch ${action.app}`);
-                this._setResponse(`Opening ${action.app}…`);
+                const appName = String(action.app).trim();
+                if (!appName || /[;&$`\\(){}<>*?~#!]/.test(appName)) {
+                    this._setResponse('Blocked: unsafe app name.');
+                    return;
+                }
+                GLib.spawn_command_line_async(`gtk-launch ${appName}`);
+                this._setResponse(`Opening ${appName}…`);
                 GLib.timeout_add(GLib.PRIORITY_DEFAULT, 1200, () => {
                     this.hide();
                     return GLib.SOURCE_REMOVE;
                 });
             } else if (action.action === 'run_command' && action.command) {
+                if (!this._isCommandSafe(action.command)) {
+                    this._setResponse('Blocked: command not in allowlist or contains unsafe characters.');
+                    return;
+                }
                 GLib.spawn_command_line_async(action.command);
                 this._setResponse(`Running: ${action.command}`);
                 GLib.timeout_add(GLib.PRIORITY_DEFAULT, 1200, () => {
