@@ -19,6 +19,7 @@ class ConversationStore:
         os.makedirs(os.path.dirname(db_path), exist_ok=True)
         self.db_path = db_path
         self._lock = threading.Lock()
+        self._local = threading.local()
         self._init_db()
         # Restrict DB file permissions to owner-only (privacy: conversation history)
         try:
@@ -27,17 +28,37 @@ class ConversationStore:
             pass
 
     def _get_connection(self):
+        """Return a per-thread SQLite connection, reusing if still open."""
+        conn = getattr(self._local, "conn", None)
+        if conn is not None:
+            try:
+                conn.execute("SELECT 1")
+                return conn
+            except Exception:
+                try:
+                    conn.close()
+                except Exception:
+                    pass
         conn = sqlite3.connect(self.db_path, check_same_thread=False)
         conn.row_factory = sqlite3.Row
         conn.execute("PRAGMA journal_mode=WAL")
         conn.execute("PRAGMA foreign_keys = ON")
+        self._local.conn = conn
         return conn
 
     def _close_connection(self, conn):
-        try:
-            conn.close()
-        except Exception:
-            pass
+        # Keep connection open for reuse; only close on errors
+        pass
+
+    def close(self):
+        """Explicitly close the per-thread connection."""
+        conn = getattr(self._local, "conn", None)
+        if conn is not None:
+            try:
+                conn.close()
+            except Exception:
+                pass
+            self._local.conn = None
 
     def _init_db(self):
         conn = self._get_connection()

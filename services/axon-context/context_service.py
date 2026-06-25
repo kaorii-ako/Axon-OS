@@ -69,6 +69,8 @@ class ContextService(dbus.service.Object):
         self._clipboard_watcher = None
         self._clipboard_watch_id = None
         self._config_mtime = 0.0
+        self._terminal_cache = None
+        self._terminal_cache_mtime = {}
         self._start_clipboard_watcher()
 
         logger.info("Axon Context Engine Service registered successfully at /org/axonos/Context")
@@ -184,7 +186,9 @@ class ContextService(dbus.service.Object):
             if not emb or len(emb) != 768:
                 return "[]"
 
-            db_path = os.path.expanduser("~/.axon/semantic_search.db")
+            from constants import SEMANTIC_INDEX_DB
+
+            db_path = str(SEMANTIC_INDEX_DB)
             if not os.path.exists(db_path):
                 return "[]"
 
@@ -232,7 +236,6 @@ class ContextService(dbus.service.Object):
 
     def _start_clipboard_watcher(self):
         """Starts a background clipboard watcher using wl-paste (Wayland) or xclip (X11)."""
-        logger = configure_app_logger(__name__)
         self._load_config()
         if not self.track_clipboard:
             logger.info("Clipboard tracking is disabled by privacy settings.")
@@ -383,61 +386,71 @@ class ContextService(dbus.service.Object):
         self._load_config()
         if not self.track_terminal_history:
             return []
-        # Try bash history
-        bash_history = Path.home() / ".bash_history"
-        if bash_history.exists():
-            try:
-                commands = []
-                with open(bash_history, errors="replace") as f:
-                    for line in f:
-                        line = line.strip()
-                        if line and not line.startswith("#"):
-                            commands.append(line)
-                            if len(commands) > n * 2:
-                                commands = commands[-n:]
-                return commands[-n:]
-            except Exception as e:
-                logger.debug("Failed to read bash history: %s", e)
 
-        # Try zsh history (supports both extended and plain formats)
-        zsh_history = Path.home() / ".zsh_history"
-        if zsh_history.exists():
-            try:
-                commands = []
-                with open(zsh_history, errors="replace") as f:
-                    for line in f:
-                        line = line.strip()
-                        if not line:
-                            continue
-                        # Extended history format: `: <timestamp>:<duration>;command`
-                        # Also handles 4-field format: `: <timestamp>:<duration>:<event>;command`
-                        match = re.match(r"^:\s*\d+:\d+(?::\d+)?;(.+)$", line)
-                        if match:
-                            commands.append(match.group(1))
-                        else:
-                            commands.append(line)
-                        if len(commands) > n * 2:
-                            commands = commands[-n:]
-                return commands[-n:]
-            except Exception as e:
-                logger.debug("Failed to read zsh history: %s", e)
+        # Check all candidate history files
+        candidates = [
+            Path.home() / ".bash_history",
+            Path.home() / ".zsh_history",
+            Path.home() / ".local" / "share" / "fish" / "fish_history",
+        ]
 
-        # Fish history
-        fish_history = Path.home() / ".local" / "share" / "fish" / "fish_history"
-        if fish_history.exists():
+        # Find the most recently modified history file
+        active_path = None
+        active_mtime = 0.0
+        for p in candidates:
             try:
-                commands = []
-                with open(fish_history, errors="replace") as f:
-                    for line in f:
-                        match = re.match(r"^- cmd: (.+)$", line.strip())
-                        if match:
-                            commands.append(match.group(1))
-                            if len(commands) > n * 2:
-                                commands = commands[-n:]
-                return commands[-n:]
-            except Exception as e:
-                logger.debug("Failed to read fish history: %s", e)
-        return []
+                mtime = p.stat().st_mtime
+                if mtime > active_mtime:
+                    active_mtime = mtime
+                    active_path = p
+            except OSError:
+                continue
+
+        if active_path is None:
+            return []
+
+        # Return cached results if file hasn't changed
+        cache_key = str(active_path)
+        if (
+            self._terminal_cache is not None
+            and self._terminal_cache_mtime.get(cache_key) == active_mtime
+        ):
+            return self._terminal_cache[-n:]
+
+        # Read and parse the history file
+        commands = self._read_history_file(active_path)
+        self._terminal_cache = commands
+        self._terminal_cache_mtime[cache_key] = active_mtime
+        return commands[-n:]
+
+    def _read_history_file(self, path, max_lines=50):
+        """Read and parse a shell history file, returning the last max_lines commands."""
+        commands = []
+        try:
+            with open(path, errors="replace") as f:
+                for line in f:
+                    line = line.strip()
+                    if not line:
+                        continue
+                    # Bash: skip timestamp lines
+                    if path.name == ".bash_history" and line.startswith("#"):
+                        continue
+                    # Zsh extended format: `: <timestamp>:<duration>;command`
+                    match = re.match(r"^:\s*\d+:\d+(?::\d+)?;(.+)$", line)
+                    if match:
+                        commands.append(match.group(1))
+                    # Fish format: `- cmd: command`
+                    elif path.name == "fish_history":
+                        fish_match = re.match(r"^- cmd: (.+)$", line)
+                        if fish_match:
+                            commands.append(fish_match.group(1))
+                    else:
+                        commands.append(line)
+                    if len(commands) > max_lines * 2:
+                        commands = commands[-max_lines:]
+        except Exception as e:
+            logger.debug("Failed to read history file %s: %s", path, e)
+        return commands[-max_lines:]
 
     def _get_last_stderr(self):
         stderr_file = AXON_DIR / "last_stderr"
