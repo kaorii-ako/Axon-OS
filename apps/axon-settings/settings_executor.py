@@ -1,10 +1,15 @@
 import json
 import logging
+import re
 import subprocess
 
 import dbus
 
 logger = logging.getLogger(__name__)
+
+# Validation patterns for AI-generated values
+_SAFE_STRING_RE = re.compile(r"^[a-zA-Z0-9_\-\.]+$")
+_SAFE_NUMBER_RE = re.compile(r"^-?\d+\.?\d*$")
 
 
 class SettingsExecutor:
@@ -12,6 +17,29 @@ class SettingsExecutor:
         self._bus = None
         self._brain = None
         self._connect()
+
+    @staticmethod
+    def _validate_value(value, expected_type=str) -> bool:
+        """Validate AI-generated values before passing to subprocess.
+
+        Prevents command injection by ensuring values match expected patterns.
+        """
+        if value is None:
+            return False
+        if expected_type is bool:
+            return isinstance(value, bool)
+        if expected_type is int:
+            return isinstance(value, int) or (
+                isinstance(value, str) and _SAFE_NUMBER_RE.match(value) is not None
+            )
+        if expected_type is float:
+            return isinstance(value, (int, float)) or (
+                isinstance(value, str) and _SAFE_NUMBER_RE.match(value) is not None
+            )
+        if expected_type is str:
+            s = str(value)
+            return len(s) <= 64 and _SAFE_STRING_RE.match(s) is not None
+        return False
 
     def _connect(self):
         try:
@@ -90,6 +118,10 @@ class SettingsExecutor:
             data = json.loads(response_str)
             action = data.get("action")
             value = data.get("value")
+
+            # Validate action is a known safe string
+            if action and not self._validate_value(action):
+                return {"success": False, "message": "Invalid action format from AI."}
 
             if action == "set_theme":
                 return self._set_theme(value)

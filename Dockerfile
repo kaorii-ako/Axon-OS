@@ -26,6 +26,10 @@ RUN apt-get update && apt-get install -y \
     sudo \
     && rm -rf /var/lib/apt/lists/*
 
+# Create non-root build user (build.sh will sudo when needed)
+RUN useradd --create-home --shell /bin/bash builder && \
+    echo "builder ALL=(ALL) NOPASSWD: ALL" >> /etc/sudoers.d/builder
+
 # Set working directory
 WORKDIR /workspace
 

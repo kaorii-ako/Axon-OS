@@ -145,8 +145,14 @@ else
             trap 'rm -f "$ollama_installer"' EXIT
             if curl -fsSL --retry 3 --retry-delay 5 -o "$ollama_installer" https://ollama.com/install.sh; then
                 if head -c 100 "$ollama_installer" | grep -q '#!/'; then
-                    sh "$ollama_installer"
-                    success "Ollama installed"
+                    # Verify script starts with known Ollama installer header
+                    if head -c 200 "$ollama_installer" | grep -q 'ollama.com\|Ollama'; then
+                        sh "$ollama_installer"
+                        success "Ollama installed"
+                    else
+                        error "Downloaded script does not appear to be the Ollama installer — refusing to execute"
+                        rm -f "$ollama_installer"
+                    fi
                 else
                     error "Downloaded Ollama installer does not appear to be a valid script"
                 fi

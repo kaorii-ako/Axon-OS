@@ -20,10 +20,10 @@ run() {
     printf "${YELLOW}▸ %s${NC} ... " "$label"
     if "$@" >/dev/null 2>&1; then
         printf "${GREEN}PASS${NC}\n"
-        ((pass++))
+        pass=$((pass + 1))
     else
         printf "${RED}FAIL${NC}\n"
-        ((fail++))
+        fail=$((fail + 1))
     fi
 }
 
@@ -49,10 +49,10 @@ echo
 printf "${YELLOW}▸ Pytest${NC} ... "
 if python3 -m pytest tests/ -v --tb=short --timeout=30 2>&1; then
     printf "${GREEN}PASS${NC}\n"
-    ((pass++))
+    pass=$((pass + 1))
 else
     printf "${RED}FAIL${NC}\n"
-    ((fail++))
+    fail=$((fail + 1))
 fi
 
 echo

@@ -351,16 +351,16 @@ generate_sbom() {
 
     # Collect package information from the chroot
     local packages=""
-    if [[ -f "${WORK_DIR}/rootfs/var/log/apt/history.log" ]]; then
-        packages=$(grep "Install:" "${WORK_DIR}/rootfs/var/log/apt/history.log" | \
+    if [[ -f "${CHROOT}/var/log/apt/history.log" ]]; then
+        packages=$(grep "Install:" "${CHROOT}/var/log/apt/history.log" | \
             sed 's/Install://' | tr ',' '\n' | \
             sed 's/([^)]*)//g' | awk '{print $1}' | sort -u | tr '\n' ',')
     fi
 
     # Collect Python package versions
     local python_packages=""
-    if [[ -d "${WORK_DIR}/rootfs/usr/lib/python3/dist-packages" ]]; then
-        python_packages=$(ls "${WORK_DIR}/rootfs/usr/lib/python3/dist-packages/"*.dist-info/ 2>/dev/null | \
+    if [[ -d "${CHROOT}/usr/lib/python3/dist-packages" ]]; then
+        python_packages=$(ls "${CHROOT}/usr/lib/python3/dist-packages/"*.dist-info/ 2>/dev/null | \
             grep -oP '[^/]+(?=-\d)' | sort -u | tr '\n' ',')
     fi
 
