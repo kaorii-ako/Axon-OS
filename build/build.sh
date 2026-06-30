@@ -28,6 +28,7 @@ VOLID="AXON_OS"
 WORK_DIR="${AXON_BUILD_DIR:-/tmp/axon-build}"
 CHROOT="${WORK_DIR}/chroot"
 IMAGE="${WORK_DIR}/image"
+APT_CACHE="${WORK_DIR}/apt-cache"  # persistent .deb cache across builds
 
 # Reproducible builds: set SOURCE_DATE_EPOCH for deterministic timestamps
 # If not set externally, use the last git commit timestamp
@@ -116,6 +117,10 @@ mount_chroot() {
     mount --bind /dev/pts "${CHROOT}/dev/pts"
     mount -t proc proc "${CHROOT}/proc"
     mount -t sysfs sysfs "${CHROOT}/sys"
+    # Persistent APT cache: avoids re-downloading packages across builds
+    mkdir -p "${APT_CACHE}"
+    mkdir -p "${CHROOT}/var/cache/apt/archives"
+    mount --bind "${APT_CACHE}" "${CHROOT}/var/cache/apt/archives"
     if grep -q "127.0.0.53" /etc/resolv.conf; then
         log "Host uses systemd-resolved. Writing fallback DNS to chroot resolv.conf..."
         printf "nameserver 8.8.8.8\nnameserver 1.1.1.1\n" > "${CHROOT}/etc/resolv.conf"
@@ -127,6 +132,7 @@ mount_chroot() {
 
 umount_chroot() {
     [[ "${MOUNTED}" == "true" ]] || return 0
+    umount -lf "${CHROOT}/var/cache/apt/archives" 2>/dev/null || true
     umount -lf "${CHROOT}/dev/pts" 2>/dev/null || true
     umount -lf "${CHROOT}/dev" 2>/dev/null || true
     umount -lf "${CHROOT}/proc" 2>/dev/null || true
