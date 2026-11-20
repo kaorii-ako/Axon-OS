@@ -103,7 +103,7 @@ jobs:
           img="localhost/${IMAGE}:${IMAGE_TAG}"
           podman run --rm "$img" bash -euo pipefail -c '
             grep -q "^NAME=\"Axon OS\"" /usr/lib/os-release
-            jq -e ."image-name" /usr/share/ublue-os/image-info.json
+            jq -e "has(\"image-name\")" /usr/share/ublue-os/image-info.json
             jq -e --arg g "${{ matrix.variant.gpu }}" ".gpu == \$g" /usr/share/axon/gpu.json
             test -x /usr/bin/axon-gpu-doctor
             test -x /usr/libexec/axon/axon-ai

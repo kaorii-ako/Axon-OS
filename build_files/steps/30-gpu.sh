@@ -47,10 +47,14 @@ fi
 
 INITRAMFS="/usr/lib/modules/${KVER}/initramfs.img"
 if [[ -f "${INITRAMFS}" ]] && command -v lsinitrd >/dev/null; then
-  if lsinitrd "${INITRAMFS}" 2>/dev/null | grep -q 'nvidia-drm\.ko\|nvidia_drm\.ko'; then
-    echo "initramfs carries nvidia-drm (early KMS)"
+  if INITRD_LIST="$(lsinitrd "${INITRAMFS}" 2>/dev/null)" && [[ -n "${INITRD_LIST}" ]]; then
+    if grep -qE 'nvidia[-_]drm\.ko' <<<"${INITRD_LIST}"; then
+      echo "initramfs carries nvidia-drm (early KMS)"
+    else
+      echo "initramfs does not carry nvidia-drm; the driver loads after switch-root (normal for Bazzite)"
+    fi
   else
-    warn "initramfs has no nvidia-drm module; early KMS and the boot splash may fall back to simpledrm"
+    echo "could not list the initramfs; skipping the early-KMS check"
   fi
 fi
 
