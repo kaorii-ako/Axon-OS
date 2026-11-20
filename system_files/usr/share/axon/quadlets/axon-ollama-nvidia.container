@@ -1,0 +1,21 @@
+[Unit]
+Description=Axon local AI (Ollama on NVIDIA)
+Wants=network-online.target
+After=network-online.target ublue-nvctk-cdi.service axon-nvidia-cdi.service
+
+[Container]
+ContainerName=axon-ollama
+Image=docker.io/ollama/ollama:latest
+AutoUpdate=registry
+AddDevice=nvidia.com/gpu=all
+SecurityLabelDisable=true
+Volume=axon-ollama:/root/.ollama
+PublishPort=127.0.0.1:11434:11434
+Environment=OLLAMA_KEEP_ALIVE=10m
+
+[Service]
+Restart=on-failure
+TimeoutStartSec=900
+
+[Install]
+WantedBy=multi-user.target

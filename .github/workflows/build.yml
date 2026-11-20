@@ -1,0 +1,159 @@
+name: Build images
+
+on:
+  push:
+    branches: [main]
+    paths-ignore: ["**.md", "docs/**"]
+  pull_request:
+    branches: [main]
+  schedule:
+    - cron: "17 6 * * *"
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  IMAGE_TAG: stable
+
+jobs:
+  lint:
+    runs-on: ubuntu-26.04
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - uses: extractions/setup-just@53165ef7e734c5c07cb06b3c8e7b647c5aa16db3 # v4.0.0
+      - name: shellcheck
+        run: shellcheck build_files/*.sh build_files/steps/*.sh system_files/usr/bin/axon-gpu-doctor system_files/usr/libexec/axon/*
+      - name: Justfile formatting
+        run: |
+          just --unstable --fmt --check -f Justfile
+          just --unstable --fmt --check -f system_files/usr/share/ublue-os/just/60-axon.just
+      - name: variants.json
+        run: jq -e 'length > 0 and all(.name and .base and (.gpu == "nvidia" or .gpu == "amd") and .desktop)' variants.json
+      - name: actionlint
+        run: docker run --rm -v "$PWD:/repo" -w /repo rhysd/actionlint:latest -color
+
+  matrix:
+    runs-on: ubuntu-26.04
+    permissions:
+      contents: read
+    outputs:
+      variants: ${{ steps.read.outputs.variants }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - id: read
+        run: echo "variants=$(jq -c . variants.json)" >> "$GITHUB_OUTPUT"
+
+  build:
+    needs: [lint, matrix]
+    runs-on: ubuntu-26.04
+    permissions:
+      contents: read
+      packages: write
+      id-token: write
+    strategy:
+      fail-fast: false
+      matrix:
+        variant: ${{ fromJSON(needs.matrix.outputs.variants) }}
+    env:
+      IMAGE: ${{ matrix.variant.name }}
+      REGISTRY: ghcr.io/${{ github.repository_owner }}
+      PUBLISH: ${{ github.event_name != 'pull_request' && github.ref == format('refs/heads/{0}', github.event.repository.default_branch) }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+
+      - name: Free disk space
+        uses: ublue-os/remove-unwanted-software@695eb75bc387dbcd9685a8e72d23439d8686cba6
+
+      - name: Prepare
+        run: |
+          {
+            echo "REGISTRY=${REGISTRY,,}"
+            echo "DATE=$(date -u +%Y%m%d)"
+            echo "SHA=${GITHUB_SHA::7}"
+          } >> "$GITHUB_ENV"
+
+      - name: Build
+        run: |
+          podman build \
+            --pull=newer \
+            --build-arg BASE_IMAGE="${{ matrix.variant.base }}" \
+            --build-arg IMAGE_NAME="${IMAGE}" \
+            --build-arg IMAGE_VENDOR="${{ github.repository_owner }}" \
+            --build-arg IMAGE_TAG="${IMAGE_TAG}" \
+            --build-arg GPU_VENDOR="${{ matrix.variant.gpu }}" \
+            --build-arg DESKTOP="${{ matrix.variant.desktop }}" \
+            --build-arg VERSION="${DATE}-${SHA}" \
+            --label org.opencontainers.image.title="${IMAGE}" \
+            --label org.opencontainers.image.description="Axon OS (${{ matrix.variant.desktop }}, ${{ matrix.variant.gpu }}) on ${{ matrix.variant.base }}" \
+            --label org.opencontainers.image.source="${{ github.server_url }}/${{ github.repository }}" \
+            --label org.opencontainers.image.revision="${GITHUB_SHA}" \
+            --label org.opencontainers.image.version="${DATE}-${SHA}" \
+            --label org.opencontainers.image.licenses=Apache-2.0 \
+            --label containers.bootc=1 \
+            --tag "localhost/${IMAGE}:${IMAGE_TAG}" \
+            .
+
+      - name: Smoke test
+        run: |
+          set -euo pipefail
+          img="localhost/${IMAGE}:${IMAGE_TAG}"
+          podman run --rm "$img" bash -euo pipefail -c '
+            grep -q "^NAME=\"Axon OS\"" /usr/lib/os-release
+            jq -e ."image-name" /usr/share/ublue-os/image-info.json
+            jq -e --arg g "${{ matrix.variant.gpu }}" ".gpu == \$g" /usr/share/axon/gpu.json
+            test -x /usr/bin/axon-gpu-doctor
+            test -x /usr/libexec/axon/axon-ai
+            if command -v just >/dev/null; then just --justfile /usr/share/ublue-os/justfile --summary | tr " " "\n" | grep -qx axon-gpu-doctor; fi
+          '
+          if [[ "${{ matrix.variant.gpu }}" == "nvidia" ]]; then
+            podman run --rm "$img" bash -euo pipefail -c '
+              cat /usr/share/axon/gpu.json
+              kver=$(ls /usr/lib/modules)
+              modinfo -k "$kver" -F version nvidia
+              test -f /etc/cdi/nvidia.yaml || systemctl is-enabled ublue-nvctk-cdi.service || systemctl is-enabled axon-nvidia-cdi.service
+            '
+          fi
+
+      - name: Push
+        if: env.PUBLISH == 'true'
+        id: push
+        run: |
+          set -euo pipefail
+          echo "${{ secrets.GITHUB_TOKEN }}" | podman login ghcr.io -u "${{ github.actor }}" --password-stdin
+          for tag in "${IMAGE_TAG}" "${IMAGE_TAG}-${DATE}" "${DATE}-${SHA}"; do
+            podman push --digestfile=/tmp/digest "localhost/${IMAGE}:${IMAGE_TAG}" "${REGISTRY}/${IMAGE}:${tag}"
+          done
+          echo "digest=$(cat /tmp/digest)" >> "$GITHUB_OUTPUT"
+
+      - name: Install cosign
+        if: env.PUBLISH == 'true'
+        uses: sigstore/cosign-installer@756fe2d284c7292c4e9b62c8a28f1e5629c59532 # v4.1.3
+        with:
+          cosign-release: "v3.1.4"
+
+      - name: Sign
+        if: env.PUBLISH == 'true'
+        env:
+          COSIGN_PRIVATE_KEY: ${{ secrets.SIGNING_SECRET }}
+          COSIGN_PASSWORD: ${{ secrets.COSIGN_PASSWORD }}
+          DIGEST: ${{ steps.push.outputs.digest }}
+        run: |
+          set -euo pipefail
+          if [[ -z "${COSIGN_PRIVATE_KEY}" ]]; then
+            if [[ -s keys/cosign.pub ]]; then
+              echo "::error::keys/cosign.pub is committed but the SIGNING_SECRET secret is missing; machines enforcing the policy would refuse this image"
+              exit 1
+            fi
+            echo "::warning::No SIGNING_SECRET; image published unsigned"
+            exit 0
+          fi
+          cosign sign -y --new-bundle-format=false --use-signing-config=false \
+            --key env://COSIGN_PRIVATE_KEY "${REGISTRY}/${IMAGE}@${DIGEST}"
+          if [[ -s keys/cosign.pub ]]; then
+            cosign verify --key keys/cosign.pub --insecure-ignore-tlog=true "${REGISTRY}/${IMAGE}@${DIGEST}" > /dev/null
+            echo "Signature verified against keys/cosign.pub"
+          fi

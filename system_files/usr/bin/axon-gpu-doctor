@@ -1,0 +1,89 @@
+#!/usr/bin/env bash
+set -uo pipefail
+
+ok() { printf '  \033[32mok\033[0m    %s\n' "$*"; }
+bad() { printf '  \033[31mfail\033[0m  %s\n' "$*"; PROBLEMS=$((PROBLEMS + 1)); }
+note() { printf '  \033[33mnote\033[0m  %s\n' "$*"; }
+
+PROBLEMS=0
+command -v lspci >/dev/null || { echo "lspci not found (install pciutils)" >&2; exit 2; }
+INFO=/usr/share/ublue-os/image-info.json
+GPU_INFO=/usr/share/axon/gpu.json
+IMAGE_GPU="$(jq -r '."gpu-vendor" // "unknown"' "${INFO}" 2>/dev/null || echo unknown)"
+
+echo "Axon OS GPU doctor"
+echo "Image: $(jq -r '."image-name" + " " + .version' "${INFO}" 2>/dev/null || echo unknown)"
+echo "Kernel: $(uname -r)"
+echo
+echo "GPUs:"
+lspci -nn | grep -Ei 'vga|3d controller|display' | sed 's/^/  /'
+echo
+
+HAS_NVIDIA_HW=0
+lspci -n | grep -qE ' 03[0-9a-f]{2}: 10de:' && HAS_NVIDIA_HW=1
+
+if ((HAS_NVIDIA_HW)) && [[ "${IMAGE_GPU}" != "nvidia" ]]; then
+  bad "NVIDIA GPU present but this is the ${IMAGE_GPU} image. Rebase with: ujust axon-rebase nvidia"
+fi
+if ((!HAS_NVIDIA_HW)) && [[ "${IMAGE_GPU}" == "nvidia" ]]; then
+  note "nvidia image on a machine without an NVIDIA GPU; the AMD/Intel image is lighter"
+fi
+
+if [[ "${IMAGE_GPU}" == "nvidia" ]] && ((HAS_NVIDIA_HW)); then
+  echo "NVIDIA:"
+  SB="$(mokutil --sb-state 2>/dev/null || true)"
+  if lsmod | grep -q '^nvidia '; then
+    ok "nvidia module loaded ($(cat /sys/module/nvidia/version 2>/dev/null))"
+  else
+    bad "nvidia module not loaded"
+    if grep -qi enabled <<<"${SB}"; then
+      note "Secure Boot is on. Enroll the Universal Blue key: ujust enroll-secure-boot-key (password: universalblue), then reboot"
+    fi
+    dmesg 2>/dev/null | grep -iE 'nvidia|nouveau' | tail -5 | sed 's/^/        /'
+  fi
+  if lsmod | grep -q '^nouveau '; then
+    bad "nouveau is loaded and will fight the NVIDIA driver"
+  else
+    ok "nouveau not loaded"
+  fi
+  if [[ "$(cat /sys/module/nvidia_drm/parameters/modeset 2>/dev/null)" == "Y" ]]; then
+    ok "nvidia-drm modeset on"
+  else
+    bad "nvidia-drm modeset off; Wayland sessions need it"
+  fi
+  if [[ -f "${GPU_INFO}" ]]; then
+    BUILT="$(jq -r .kmod_version "${GPU_INFO}")"
+    RUNNING="$(cat /sys/module/nvidia/version 2>/dev/null || echo none)"
+    if [[ "${BUILT}" == "${RUNNING}" ]]; then
+      ok "running driver matches the image (${BUILT})"
+    else
+      bad "running driver ${RUNNING} differs from the image's ${BUILT}; reboot after updating"
+    fi
+  fi
+  if nvidia-smi --query-gpu=name,driver_version,pstate,temperature.gpu --format=csv,noheader >/tmp/axon-smi 2>&1; then
+    ok "nvidia-smi: $(cat /tmp/axon-smi)"
+  else
+    bad "nvidia-smi failed: $(head -1 /tmp/axon-smi)"
+  fi
+  if [[ -f /etc/cdi/nvidia.yaml ]]; then
+    ok "CDI spec present (podman --device nvidia.com/gpu=all works)"
+  else
+    bad "no /etc/cdi/nvidia.yaml; run: sudo systemctl start ublue-nvctk-cdi.service || sudo systemctl start axon-nvidia-cdi.service"
+  fi
+  if grep -q 'PreserveVideoMemoryAllocations=1' /proc/driver/nvidia/params 2>/dev/null ||
+    grep -q 'PreserveVideoMemoryAllocations: 1' /proc/driver/nvidia/params 2>/dev/null; then
+    ok "VRAM preserved across suspend"
+  else
+    note "PreserveVideoMemoryAllocations is off; suspend may corrupt the desktop"
+  fi
+  if (($(lspci -n | grep -cE ' 03[0-9a-f]{2}: ') > 1)); then
+    note "hybrid graphics: launch an app on the NVIDIA GPU with: switcherooctl launch <app>"
+  fi
+  echo
+fi
+
+if ((PROBLEMS)); then
+  echo "${PROBLEMS} problem(s) found."
+  exit 1
+fi
+echo "No problems found."

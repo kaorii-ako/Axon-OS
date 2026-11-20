@@ -1,0 +1,12 @@
+[Unit]
+Description=Generate the NVIDIA CDI spec for GPU containers
+ConditionFileIsExecutable=/usr/bin/nvidia-ctk
+ConditionPathExists=/proc/driver/nvidia
+After=local-fs.target systemd-modules-load.service
+
+[Service]
+Type=oneshot
+ExecStart=/usr/bin/nvidia-ctk cdi generate --output=/etc/cdi/nvidia.yaml
+
+[Install]
+WantedBy=multi-user.target

@@ -1,0 +1,6 @@
+_build*/
+output/
+*.qcow2
+*.iso
+cosign.key
+keys/*.key

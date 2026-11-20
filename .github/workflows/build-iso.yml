@@ -1,0 +1,73 @@
+name: Build installer ISO
+
+on:
+  workflow_dispatch:
+    inputs:
+      variant:
+        description: Image variant
+        type: choice
+        default: axon-os-nvidia
+        options:
+          - axon-os-nvidia
+          - axon-os
+          - axon-os-gnome-nvidia
+          - axon-os-gnome
+
+concurrency:
+  group: ${{ github.workflow }}-${{ inputs.variant }}
+  cancel-in-progress: true
+
+jobs:
+  iso:
+    runs-on: ubuntu-26.04
+    permissions:
+      contents: read
+      packages: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+
+      - name: Free disk space
+        uses: ublue-os/remove-unwanted-software@695eb75bc387dbcd9685a8e72d23439d8686cba6
+        with:
+          remove-codeql: true
+
+      - name: Render installer config
+        id: cfg
+        run: |
+          set -euo pipefail
+          owner="${GITHUB_REPOSITORY_OWNER,,}"
+          ref="ghcr.io/${owner}/${{ inputs.variant }}:stable"
+          flags=""
+          if [[ -s keys/cosign.pub ]]; then flags="--enforce-container-sigpolicy"; fi
+          sed -e "s|@IMAGE_REF@|${ref}|" -e "s|@SWITCH_FLAGS@|${flags}|" disk_config/iso.toml > "${RUNNER_TEMP}/iso.toml"
+          cat "${RUNNER_TEMP}/iso.toml"
+          {
+            echo "ref=${ref}"
+            echo "config=${RUNNER_TEMP}/iso.toml"
+            echo "uid=$(id -u):$(id -g)"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Build ISO
+        id: build
+        uses: osbuild/bootc-image-builder-action@8661cd3832544ad68c12dcde8681b13ab0f56a8d # main
+        with:
+          builder-image: quay.io/centos-bootc/bootc-image-builder:latest
+          config-file: ${{ steps.cfg.outputs.config }}
+          image: ${{ steps.cfg.outputs.ref }}
+          chown: ${{ steps.cfg.outputs.uid }}
+          types: anaconda-iso
+          additional-args: --use-librepo=True
+
+      - name: Checksum
+        run: |
+          cd "${{ steps.build.outputs.output-directory }}"
+          find . -name '*.iso' -exec sha256sum {} + | tee SHA256SUMS
+
+      - name: Upload
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: ${{ inputs.variant }}-iso
+          path: ${{ steps.build.outputs.output-directory }}
+          if-no-files-found: error
+          retention-days: 7
+          compression-level: 0

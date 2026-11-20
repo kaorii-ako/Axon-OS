@@ -1,0 +1,22 @@
+[Unit]
+Description=Axon local AI (Ollama on AMD ROCm)
+Wants=network-online.target
+After=network-online.target
+
+[Container]
+ContainerName=axon-ollama
+Image=docker.io/ollama/ollama:rocm
+AutoUpdate=registry
+AddDevice=/dev/kfd
+AddDevice=/dev/dri
+SecurityLabelDisable=true
+Volume=axon-ollama:/root/.ollama
+PublishPort=127.0.0.1:11434:11434
+Environment=OLLAMA_KEEP_ALIVE=10m
+
+[Service]
+Restart=on-failure
+TimeoutStartSec=900
+
+[Install]
+WantedBy=multi-user.target

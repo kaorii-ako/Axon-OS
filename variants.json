@@ -1,0 +1,26 @@
+[
+  {
+    "name": "axon-os",
+    "base": "ghcr.io/ublue-os/bazzite:stable",
+    "gpu": "amd",
+    "desktop": "kde"
+  },
+  {
+    "name": "axon-os-nvidia",
+    "base": "ghcr.io/ublue-os/bazzite-nvidia-open:stable",
+    "gpu": "nvidia",
+    "desktop": "kde"
+  },
+  {
+    "name": "axon-os-gnome",
+    "base": "ghcr.io/ublue-os/bazzite-gnome:stable",
+    "gpu": "amd",
+    "desktop": "gnome"
+  },
+  {
+    "name": "axon-os-gnome-nvidia",
+    "base": "ghcr.io/ublue-os/bazzite-gnome-nvidia-open:stable",
+    "gpu": "nvidia",
+    "desktop": "gnome"
+  }
+]

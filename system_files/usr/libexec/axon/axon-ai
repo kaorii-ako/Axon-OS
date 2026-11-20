@@ -1,0 +1,45 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+GPU="$(jq -r '."gpu-vendor" // "amd"' /usr/share/ublue-os/image-info.json)"
+SRC="/usr/share/axon/quadlets/axon-ollama-${GPU}.container"
+DST=/etc/containers/systemd/axon-ollama.container
+
+case "${1:-status}" in
+  enable)
+    [[ -f "${SRC}" ]] || { echo "No quadlet for GPU vendor '${GPU}'" >&2; exit 1; }
+    if [[ "${GPU}" == "nvidia" && ! -f /etc/cdi/nvidia.yaml ]]; then
+      systemctl start ublue-nvctk-cdi.service 2>/dev/null || systemctl start axon-nvidia-cdi.service
+    fi
+    install -Dm0644 "${SRC}" "${DST}"
+    systemctl daemon-reload
+    systemctl enable --now podman-auto-update.timer
+    echo "Pulling the Ollama image (a few GB on first run)..."
+    systemctl start axon-ollama.service
+    for _ in $(seq 1 60); do
+      curl -fsS http://127.0.0.1:11434/api/version >/dev/null 2>&1 && break
+      sleep 2
+    done
+    curl -fsS http://127.0.0.1:11434/api/version && echo
+    echo "Ollama is on http://127.0.0.1:11434 and starts on boot."
+    echo "Pull a model: podman exec -it axon-ollama ollama pull llama3.2"
+    ;;
+  disable)
+    systemctl stop axon-ollama.service 2>/dev/null || true
+    rm -f "${DST}"
+    systemctl daemon-reload
+    echo "Disabled. Models are kept in the axon-ollama volume (podman volume rm axon-ollama to delete)."
+    ;;
+  status)
+    if [[ -f "${DST}" ]]; then
+      systemctl --no-pager status axon-ollama.service | head -5
+      curl -fsS http://127.0.0.1:11434/api/version 2>/dev/null && echo
+    else
+      echo "Local AI is off. Turn it on with: ujust axon-ai enable"
+    fi
+    ;;
+  *)
+    echo "usage: axon-ai enable|disable|status" >&2
+    exit 2
+    ;;
+esac
